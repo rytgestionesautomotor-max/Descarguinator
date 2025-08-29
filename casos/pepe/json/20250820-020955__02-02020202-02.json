@@ -1,0 +1,45 @@
+{
+  "JUZGADO": "malvinas ",
+  "MUNICIPIO": "malvinas municipal",
+  "FECHA_PRESENTACION": "20/08/2025",
+  "NRO_CAUSA": "02-02020202-02",
+  "cliente": {
+    "NOMBRE": "pepe",
+    "DNI": "12312312",
+    "NACIONALIDAD": "Argentina",
+    "DOMICILIO_REAL": "portugal3113",
+    "DOMICILIO_PROCESAL": "portugal3113",
+    "DOMINIO": "ford",
+    "VEHICULO_MARCA": "Ford ka 1.6 3 puertas",
+    "VEHICULO_MODELO": "ka",
+    "ADJUNTA_DNI_IMG": true,
+    "ADJUNTA_CEDULA_IMG": true,
+    "ADJUNTA_ACTA_IMG": true
+  },
+  "infracciones": [
+    {
+      "TIPO_INFRACCION": "senda_peatonal",
+      "NRO_ACTA": "02-0202020200-0",
+      "FECHA_HECHO": "20/08/2025",
+      "HORA_HECHO": "00:00",
+      "LUGAR": "ruta 26",
+      "EQUIPO_MARCA": null,
+      "EQUIPO_MODELO": null,
+      "EQUIPO_SERIE": null,
+      "PATENTE_LEGIBLE": false,
+      "INTI_INSPECCION_VIGENTE": false,
+      "AUTORIZACION_MUNICIPAL_VIGENTE": false,
+      "SENALIZACION_28BIS_CUMPLIDA": false,
+      "NOTIFICACION_EN_60_DIAS": false,
+      "NOTIFICACION_FEHACIENTE": false,
+      "IMPUTACION_INDICA_NORMA": false,
+      "FIRMA_DIGITAL_VALIDA": false,
+      "METADATOS_COMPLETOS": false,
+      "CADENA_CUSTODIA_ACREDITADA": false,
+      "AGENTE_IDENTIFICADO": false
+    }
+  ],
+  "HAY_EQUIPO_AUTOMATICO": true,
+  "INCOMPETENCIA_TERRITORIAL": false,
+  "PLAZO_5_ANIOS_PRESCRIPCION": false
+}
