@@ -232,10 +232,8 @@ st.sidebar.header("Cliente")
 modo = st.sidebar.radio(
     "¿Qué querés hacer?",
     ["Crear descargos con nuevo cliente", "Crear descargos con cliente existente"],
-    horizontal=False,
-)
-
 if modo == "Crear descargos con nuevo cliente":
+    # Uploader con clave variable para permitir re-subir el mismo PDF
     if "_pdf_uploader_key" not in st.session_state:
         st.session_state._pdf_uploader_key = 0
     uploaded_pdf = st.file_uploader(
@@ -243,6 +241,7 @@ if modo == "Crear descargos con nuevo cliente":
         type="pdf",
         key=f"pdf_uploader_{st.session_state._pdf_uploader_key}"
     )
+
     if uploaded_pdf and pdf_to_descargo and st.session_state.get("_pdf_last") != uploaded_pdf.name:
         parser = getattr(pdf_to_descargo, "parse_pdf", None)
         if parser is None:
@@ -253,6 +252,7 @@ if modo == "Crear descargos con nuevo cliente":
                 if "infrs" not in st.session_state:
                     st.session_state.infrs = []
                 st.session_state.infrs.append(data.get("infracciones", [{}])[0])
+
                 cli = data.get("cliente", {})
                 cli_mapping = {
                     "cli_nombre": "NOMBRE",
@@ -267,8 +267,9 @@ if modo == "Crear descargos con nuevo cliente":
                 for st_key, data_key in cli_mapping.items():
                     if data_key in cli:
                         st.session_state[st_key] = cli[data_key]
+
                 st.session_state._pdf_last = uploaded_pdf.name
-                st.session_state._pdf_uploader_key += 1
+                st.session_state._pdf_uploader_key += 1  # reinicia el file_uploader
             except Exception as e:
                 st.error(f"Fallo procesando PDF: {e}")
     elif uploaded_pdf and pdf_to_descargo is None:
@@ -287,6 +288,10 @@ if modo == "Crear descargos con nuevo cliente":
     dominio = st.sidebar.text_input("Dominio (patente)", key="cli_dominio")
     veh_marca = st.sidebar.text_input("Vehículo marca", key="cli_veh_marca")
     veh_modelo = st.sidebar.text_input("Vehículo modelo", key="cli_veh_modelo")
+
+    st.sidebar.subheader("Datos del expediente")
+    juzgado = st.sidebar.text_input("Juzgado", key="exp_juzgado")
+    municipio = st.sidebar.text_input("Municipio", key="exp_municipio")
 
     st.sidebar.divider()
     st.sidebar.markdown("**Adjuntos**")
@@ -354,64 +359,42 @@ if modo == "Crear descargos con nuevo cliente":
                 st.markdown("**Chequeos de validez**")
                 c12, c13, c14, c15 = st.columns(4)
                 inf["INTI_INSPECCION_VIGENTE"] = c12.checkbox(
-                    "INTI vigente",
-                    value=bool(inf.get("INTI_INSPECCION_VIGENTE")),
-                    key=f"inti_{idx}"
+                    "INTI vigente", value=bool(inf.get("INTI_INSPECCION_VIGENTE")), key=f"inti_{idx}"
                 )
                 inf["AUTORIZACION_MUNICIPAL_VIGENTE"] = c13.checkbox(
-                    "Autorización municipal vigente",
-                    value=bool(inf.get("AUTORIZACION_MUNICIPAL_VIGENTE")),
-                    key=f"auto_muni_{idx}"
+                    "Autorización municipal vigente", value=bool(inf.get("AUTORIZACION_MUNICIPAL_VIGENTE")), key=f"auto_muni_{idx}"
                 )
                 inf["SENALIZACION_28BIS_CUMPLIDA"] = c14.checkbox(
-                    "Señalización art. 28 bis",
-                    value=bool(inf.get("SENALIZACION_28BIS_CUMPLIDA")),
-                    key=f"28bis_{idx}"
+                    "Señalización art. 28 bis", value=bool(inf.get("SENALIZACION_28BIS_CUMPLIDA")), key=f"28bis_{idx}"
                 )
                 inf["PATENTE_LEGIBLE"] = c15.checkbox(
-                    "Patente legible en foto",
-                    value=bool(inf.get("PATENTE_LEGIBLE")),
-                    key=f"patente_{idx}"
+                    "Patente legible en foto", value=bool(inf.get("PATENTE_LEGIBLE")), key=f"patente_{idx}"
                 )
 
             st.markdown("**Validez formal / notificaciones**")
             c16, c17, c18, c19 = st.columns(4)
             inf["NOTIFICACION_EN_60_DIAS"] = c16.checkbox(
-                "Notificación < 60 días",
-                value=inf.get("NOTIFICACION_EN_60_DIAS", False),
-                key=f"not60_{idx}"
+                "Notificación < 60 días", value=inf.get("NOTIFICACION_EN_60_DIAS", False), key=f"not60_{idx}"
             )
             inf["NOTIFICACION_FEHACIENTE"] = c17.checkbox(
-                "Notificación fehaciente",
-                value=inf.get("NOTIFICACION_FEHACIENTE", False),
-                key=f"notfeh_{idx}"
+                "Notificación fehaciente", value=inf.get("NOTIFICACION_FEHACIENTE", False), key=f"notfeh_{idx}"
             )
             inf["IMPUTACION_INDICA_NORMA"] = c18.checkbox(
-                "Indica norma violada",
-                value=inf.get("IMPUTACION_INDICA_NORMA", False),
-                key=f"norma_{idx}"
+                "Indica norma violada", value=inf.get("IMPUTACION_INDICA_NORMA", False), key=f"norma_{idx}"
             )
             inf["FIRMA_DIGITAL_VALIDA"] = c19.checkbox(
-                "Firma digital válida",
-                value=inf.get("FIRMA_DIGITAL_VALIDA", False),
-                key=f"firma_{idx}"
+                "Firma digital válida", value=inf.get("FIRMA_DIGITAL_VALIDA", False), key=f"firma_{idx}"
             )
 
             c20, c21, c22 = st.columns(3)
             inf["METADATOS_COMPLETOS"] = c20.checkbox(
-                "Metadatos completos",
-                value=inf.get("METADATOS_COMPLETOS", False),
-                key=f"metadata_{idx}"
+                "Metadatos completos", value=inf.get("METADATOS_COMPLETOS", False), key=f"metadata_{idx}"
             )
             inf["CADENA_CUSTODIA_ACREDITADA"] = c21.checkbox(
-                "Cadena de custodia acreditada",
-                value=inf.get("CADENA_CUSTODIA_ACREDITADA", False),
-                key=f"cadena_{idx}"
+                "Cadena de custodia acreditada", value=inf.get("CADENA_CUSTODIA_ACREDITADA", False), key=f"cadena_{idx}"
             )
             inf["AGENTE_IDENTIFICADO"] = c22.checkbox(
-                "Agente identificado",
-                value=inf.get("AGENTE_IDENTIFICADO", False),
-                key=f"agente_{idx}"
+                "Agente identificado", value=inf.get("AGENTE_IDENTIFICADO", False), key=f"agente_{idx}"
             )
 
     st.markdown("---")
@@ -426,18 +409,11 @@ if modo == "Crear descargos con nuevo cliente":
         else:
             try:
                 cliente = Cliente(
-                    NOMBRE=nombre,
-                    DNI=dni,
-                    NACIONALIDAD=nacionalidad,
-                    DOMICILIO_REAL=domicilio_real,
-                    DOMICILIO_PROCESAL=domicilio_procesal,
-                    DOMINIO=dominio,
-                    VEHICULO_MARCA=veh_marca,
-                    VEHICULO_MODELO=veh_modelo,
-                    ADJUNTA_DNI_IMG=adj_dni,
-                    ADJUNTA_CEDULA_IMG=adj_cedula,
-                    ADJUNTA_FIRMA_IMG=adj_firma,
-                    ADJUNTA_ACTA_IMG=adj_acta,
+                    NOMBRE=nombre, DNI=dni, NACIONALIDAD=nacionalidad,
+                    DOMICILIO_REAL=domicilio_real, DOMICILIO_PROCESAL=domicilio_procesal,
+                    DOMINIO=dominio, VEHICULO_MARCA=veh_marca, VEHICULO_MODELO=veh_modelo,
+                    ADJUNTA_DNI_IMG=adj_dni, ADJUNTA_CEDULA_IMG=adj_cedula,
+                    ADJUNTA_FIRMA_IMG=adj_firma, ADJUNTA_ACTA_IMG=adj_acta,
                 )
                 infrs = [Infraccion(**i) for i in st.session_state.infrs]
                 caso = Caso(cliente=cliente, infracciones=infrs)
@@ -459,18 +435,11 @@ if modo == "Crear descargos con nuevo cliente":
         else:
             try:
                 cliente = Cliente(
-                    NOMBRE=nombre,
-                    DNI=dni,
-                    NACIONALIDAD=nacionalidad,
-                    DOMICILIO_REAL=domicilio_real,
-                    DOMICILIO_PROCESAL=domicilio_procesal,
-                    DOMINIO=dominio,
-                    VEHICULO_MARCA=veh_marca,
-                    VEHICULO_MODELO=veh_modelo,
-                    ADJUNTA_DNI_IMG=adj_dni,
-                    ADJUNTA_CEDULA_IMG=adj_cedula,
-                    ADJUNTA_FIRMA_IMG=adj_firma,
-                    ADJUNTA_ACTA_IMG=adj_acta,
+                    NOMBRE=nombre, DNI=dni, NACIONALIDAD=nacionalidad,
+                    DOMICILIO_REAL=domicilio_real, DOMICILIO_PROCESAL=domicilio_procesal,
+                    DOMINIO=dominio, VEHICULO_MARCA=veh_marca, VEHICULO_MODELO=veh_modelo,
+                    ADJUNTA_DNI_IMG=adj_dni, ADJUNTA_CEDULA_IMG=adj_cedula,
+                    ADJUNTA_FIRMA_IMG=adj_firma, ADJUNTA_ACTA_IMG=adj_acta,
                 )
                 infrs = [Infraccion(**i) for i in st.session_state.infrs]
                 caso = Caso(cliente=cliente, infracciones=infrs)
