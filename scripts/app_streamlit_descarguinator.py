@@ -232,6 +232,7 @@ st.sidebar.header("Cliente")
 modo = st.sidebar.radio(
     "¿Qué querés hacer?",
     ["Crear descargos con nuevo cliente", "Crear descargos con cliente existente"],
+)
 if modo == "Crear descargos con nuevo cliente":
     # Uploader con clave variable para permitir re-subir el mismo PDF
     if "_pdf_uploader_key" not in st.session_state:
@@ -288,10 +289,6 @@ if modo == "Crear descargos con nuevo cliente":
     dominio = st.sidebar.text_input("Dominio (patente)", key="cli_dominio")
     veh_marca = st.sidebar.text_input("Vehículo marca", key="cli_veh_marca")
     veh_modelo = st.sidebar.text_input("Vehículo modelo", key="cli_veh_modelo")
-
-    st.sidebar.subheader("Datos del expediente")
-    juzgado = st.sidebar.text_input("Juzgado", key="exp_juzgado")
-    municipio = st.sidebar.text_input("Municipio", key="exp_municipio")
 
     st.sidebar.divider()
     st.sidebar.markdown("**Adjuntos**")
