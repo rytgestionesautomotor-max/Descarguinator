@@ -218,7 +218,7 @@ if modo == "Crear caso nuevo":
             st.error("pdf_to_descargo no tiene función parse_pdf")
         else:
             try:
-                data = parser(uploaded_pdf.read())
+                data = parser(uploaded_pdf)
                 st.session_state.infrs = data.get("infracciones", [])
                 cli = data.get("cliente", {})
                 case_mapping = {"exp_juzgado": "JUZGADO", "exp_municipio": "MUNICIPIO", "exp_nro_causa": "NRO_CAUSA"}
