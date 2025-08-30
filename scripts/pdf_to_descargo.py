@@ -187,6 +187,7 @@ def parse_pdf(pdf_source) -> dict:
     else:
         raise TypeError("pdf_source debe ser ruta, bytes o archivo-like")
 
+ codex/add-pdf-data-extraction-feature
     ctx = extract_fields(text)
     infr = {
         "TIPO_INFRACCION": ctx.get("TIPO_INFRACCION", ""),
@@ -206,6 +207,7 @@ def parse_pdf(pdf_source) -> dict:
         "VEHICULO_MODELO": ctx.get("VEHICULO_MODELO", ""),
     }
     return {"infracciones": [infr], "cliente": cli}
+main
 # --- fin API ---
 
 def save_json(ctx: dict, out_path: Path):
