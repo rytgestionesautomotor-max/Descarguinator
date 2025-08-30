@@ -16,8 +16,10 @@ from slugify import slugify
 
 try:
     import pdf_to_descargo
-except Exception:  # pragma: no cover - optional dependency
+    _PDF_IMPORT_ERROR = ""
+except Exception as e:  # pragma: no cover - optional dependency
     pdf_to_descargo = None
+    _PDF_IMPORT_ERROR = str(e)
 
 # =============================
 # Configuración
@@ -261,7 +263,10 @@ if modo == "Crear descargos con nuevo cliente":
             except Exception as e:
                 st.error(f"Fallo procesando PDF: {e}")
     elif uploaded_pdf and pdf_to_descargo is None:
-        st.warning("Instalá pdf_to_descargo para analizar PDFs automáticamente")
+        msg = "No se pudo importar pdf_to_descargo"
+        if _PDF_IMPORT_ERROR:
+            msg += f": {_PDF_IMPORT_ERROR}"
+        st.warning(msg + ". Instalá sus dependencias para habilitar el parseo automático.")
 
     st.sidebar.subheader("Datos del cliente")
     nombre = st.sidebar.text_input("Nombre completo", key="cli_nombre")
@@ -288,8 +293,6 @@ if modo == "Crear descargos con nuevo cliente":
     firma_file = st.sidebar.file_uploader("Archivo Firma", type=["jpg","jpeg","png"], key="firma_file")
     adj_acta = st.sidebar.checkbox("Adjunta Acta", value=True)
 
- codex/add-pdf-data-extraction-feature
- main
     st.markdown("---")
     st.subheader("Infracciones del caso")
 
@@ -363,7 +366,6 @@ if modo == "Crear descargos con nuevo cliente":
     st.markdown("---")
     col_save1, col_save2 = st.columns(2)
     if col_save1.button("💾 Guardar JSON del caso"):
- codex/add-pdf-data-extraction-feature
         faltan = (
             not nombre or not dni or not st.session_state.infrs or
             any(not i.get("JUZGADO") or not i.get("MUNICIPIO") or not i.get("NRO_ACTA") for i in st.session_state.infrs)
@@ -371,7 +373,6 @@ if modo == "Crear descargos con nuevo cliente":
         if faltan:
             st.error("Completá: Nombre, DNI y Juzgado/Municipio/Nro. de acta en cada infracción.")
 
- main
         else:
             try:
                 cliente = Cliente(
@@ -391,25 +392,21 @@ if modo == "Crear descargos con nuevo cliente":
                 infrs = [Infraccion(**i) for i in st.session_state.infrs]
                 caso = Caso(cliente=cliente, infracciones=infrs)
                 path = guardar_json(caso, nombre)
-codex/add-pdf-data-extraction-feature
                 base_slug = slugify(st.session_state.infrs[0]["NRO_ACTA"]) if st.session_state.infrs else ""
                 guardar_adjuntos(base_slug, dni_file, ced_file, firma_file)
 
-main
                 st.success(f"JSON guardado: {path}")
                 st.session_state["last_json_path"] = str(path)
             except Exception as e:
                 st.exception(e)
 
     if col_save2.button("💾 Guardar y generar descargos (.docx)"):
-codex/add-pdf-data-extraction-feature
         faltan = (
             not nombre or not dni or not st.session_state.infrs or
             any(not i.get("JUZGADO") or not i.get("MUNICIPIO") or not i.get("NRO_ACTA") for i in st.session_state.infrs)
         )
         if faltan:
             st.error("Completá: Nombre, DNI y Juzgado/Municipio/Nro. de acta en cada infracción.")
- main
         else:
             try:
                 cliente = Cliente(
@@ -429,10 +426,9 @@ codex/add-pdf-data-extraction-feature
                 infrs = [Infraccion(**i) for i in st.session_state.infrs]
                 caso = Caso(cliente=cliente, infracciones=infrs)
                 path = guardar_json(caso, nombre)
- codex/add-pdf-data-extraction-feature
                 base_slug = slugify(st.session_state.infrs[0]["NRO_ACTA"]) if st.session_state.infrs else ""
                 guardar_adjuntos(base_slug, dni_file, ced_file, firma_file)
- main
+
                 st.success(f"JSON guardado: {path}")
                 st.session_state["last_json_path"] = str(path)
                 ok, out_path = ejecutar_render(path)
