@@ -40,11 +40,14 @@ RE = {
     "marca": re.compile(r"Marca:\s*([A-ZÁÉÍÓÚÑ0-9\s\.\-]+)"),
     "modelo": re.compile(r"Modelo:\s*([A-Z0-9ÁÉÍÓÚÑ\.\- ]+)"),
     "anio": re.compile(r"Año:\s*([0-9]{4})"),
-    "jurisdiccion": re.compile(r"Jurisdicción Constatación:\s*([A-ZÁÉÍÓÚÑ\(\)\s0-9\-]+)"),
-    "tipo": re.compile(r"Tipo:\s*([A-ZÁÉÍÓÚÑ]+)"),
-    "equipo_serie": re.compile(r"Nro Serie:\s*([A-Z0-9]+)"),
-    "equipo_marca": re.compile(r"Equipo Marca:\s*([A-Z0-9ÁÉÍÓÚÑ\-\s]+)"),
-    "equipo_modelo": re.compile(r"Modelo:\s*([A-Z0-9ÁÉÍÓÚÑ\-\s]+)"),
+    "jurisdiccion": re.compile(r"Jurisdicción Constatación:\s*([A-ZÁÉÍÓÚÑ\(\)\s0-9\-]+)", re.IGNORECASE),
+    "tipo": re.compile(r"Tipo:\s*([A-ZÁÉÍÓÚÑ]+)", re.IGNORECASE),
+    "equipo_marca": re.compile(
+        r"Equipo Marca:\s*([A-Z0-9ÁÉÍÓÚÑ\- ]+?)(?=\s*N[ro°º]{1,2}\s*Serie)",
+        re.IGNORECASE,
+    ),
+    "equipo_serie": re.compile(r"N[ro°º]{1,2}\s*Serie:\s*([A-Z0-9]+)", re.IGNORECASE),
+    "equipo_modelo": re.compile(r"Modelo:\s*([A-Z0-9ÁÉÍÓÚÑ\-\s]+)", re.IGNORECASE),
     "articulo_line": re.compile(r"([0-9]{1,3})\s+No respetar luces de semáforo", re.IGNORECASE),
     "desc_line": re.compile(r"No respetar luces de semáforo", re.IGNORECASE),
 }
@@ -97,7 +100,9 @@ def extract_fields(text: str) -> dict:
     municipio = ""
     provincia = "Buenos Aires"
     if jurisdiccion:
-        municipio = jurisdiccion.split("(")[0].strip().title()
+        base_muni = jurisdiccion.split("(")[0]
+        base_muni = re.sub(r"\bRPI\b.*", "", base_muni, flags=re.IGNORECASE)
+        municipio = base_muni.strip().title()
 
     tipo_infraccion = _infer_tipo(text)
 

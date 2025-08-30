@@ -232,10 +232,16 @@ st.sidebar.header("Cliente")
 modo = st.sidebar.radio(
     "¿Qué querés hacer?",
     ["Crear descargos con nuevo cliente", "Crear descargos con cliente existente"],
-    horizontal=False,
-)
 if modo == "Crear descargos con nuevo cliente":
-    uploaded_pdf = st.file_uploader("Acta en PDF", type="pdf", key="pdf_uploader")
+    # Uploader con clave variable para permitir re-subir el mismo PDF
+    if "_pdf_uploader_key" not in st.session_state:
+        st.session_state._pdf_uploader_key = 0
+    uploaded_pdf = st.file_uploader(
+        "Acta en PDF",
+        type="pdf",
+        key=f"pdf_uploader_{st.session_state._pdf_uploader_key}"
+    )
+
     if uploaded_pdf and pdf_to_descargo and st.session_state.get("_pdf_last") != uploaded_pdf.name:
         parser = getattr(pdf_to_descargo, "parse_pdf", None)
         if parser is None:
@@ -263,7 +269,7 @@ if modo == "Crear descargos con nuevo cliente":
                         st.session_state[st_key] = cli[data_key]
 
                 st.session_state._pdf_last = uploaded_pdf.name
-                st.session_state.pdf_uploader = None
+                st.session_state._pdf_uploader_key += 1  # reinicia el file_uploader
             except Exception as e:
                 st.error(f"Fallo procesando PDF: {e}")
     elif uploaded_pdf and pdf_to_descargo is None:
@@ -352,22 +358,44 @@ if modo == "Crear descargos con nuevo cliente":
                 inf["EQUIPO_SERIE"] = c11.text_input("Equipo: Serie", value=inf.get("EQUIPO_SERIE") or "", key=f"eserie_{idx}") or None
                 st.markdown("**Chequeos de validez**")
                 c12, c13, c14, c15 = st.columns(4)
-                inf["INTI_INSPECCION_VIGENTE"] = c12.checkbox("INTI vigente", value=bool(inf.get("INTI_INSPECCION_VIGENTE")))
-                inf["AUTORIZACION_MUNICIPAL_VIGENTE"] = c13.checkbox("Autorización municipal vigente", value=bool(inf.get("AUTORIZACION_MUNICIPAL_VIGENTE")))
-                inf["SENALIZACION_28BIS_CUMPLIDA"] = c14.checkbox("Señalización art. 28 bis", value=bool(inf.get("SENALIZACION_28BIS_CUMPLIDA")))
-                inf["PATENTE_LEGIBLE"] = c15.checkbox("Patente legible en foto", value=bool(inf.get("PATENTE_LEGIBLE")))
+                inf["INTI_INSPECCION_VIGENTE"] = c12.checkbox(
+                    "INTI vigente", value=bool(inf.get("INTI_INSPECCION_VIGENTE")), key=f"inti_{idx}"
+                )
+                inf["AUTORIZACION_MUNICIPAL_VIGENTE"] = c13.checkbox(
+                    "Autorización municipal vigente", value=bool(inf.get("AUTORIZACION_MUNICIPAL_VIGENTE")), key=f"auto_muni_{idx}"
+                )
+                inf["SENALIZACION_28BIS_CUMPLIDA"] = c14.checkbox(
+                    "Señalización art. 28 bis", value=bool(inf.get("SENALIZACION_28BIS_CUMPLIDA")), key=f"28bis_{idx}"
+                )
+                inf["PATENTE_LEGIBLE"] = c15.checkbox(
+                    "Patente legible en foto", value=bool(inf.get("PATENTE_LEGIBLE")), key=f"patente_{idx}"
+                )
 
             st.markdown("**Validez formal / notificaciones**")
             c16, c17, c18, c19 = st.columns(4)
-            inf["NOTIFICACION_EN_60_DIAS"] = c16.checkbox("Notificación < 60 días", value=inf.get("NOTIFICACION_EN_60_DIAS", False))
-            inf["NOTIFICACION_FEHACIENTE"] = c17.checkbox("Notificación fehaciente", value=inf.get("NOTIFICACION_FEHACIENTE", False))
-            inf["IMPUTACION_INDICA_NORMA"] = c18.checkbox("Indica norma violada", value=inf.get("IMPUTACION_INDICA_NORMA", False))
-            inf["FIRMA_DIGITAL_VALIDA"] = c19.checkbox("Firma digital válida", value=inf.get("FIRMA_DIGITAL_VALIDA", False))
+            inf["NOTIFICACION_EN_60_DIAS"] = c16.checkbox(
+                "Notificación < 60 días", value=inf.get("NOTIFICACION_EN_60_DIAS", False), key=f"not60_{idx}"
+            )
+            inf["NOTIFICACION_FEHACIENTE"] = c17.checkbox(
+                "Notificación fehaciente", value=inf.get("NOTIFICACION_FEHACIENTE", False), key=f"notfeh_{idx}"
+            )
+            inf["IMPUTACION_INDICA_NORMA"] = c18.checkbox(
+                "Indica norma violada", value=inf.get("IMPUTACION_INDICA_NORMA", False), key=f"norma_{idx}"
+            )
+            inf["FIRMA_DIGITAL_VALIDA"] = c19.checkbox(
+                "Firma digital válida", value=inf.get("FIRMA_DIGITAL_VALIDA", False), key=f"firma_{idx}"
+            )
 
             c20, c21, c22 = st.columns(3)
-            inf["METADATOS_COMPLETOS"] = c20.checkbox("Metadatos completos", value=inf.get("METADATOS_COMPLETOS", False))
-            inf["CADENA_CUSTODIA_ACREDITADA"] = c21.checkbox("Cadena de custodia acreditada", value=inf.get("CADENA_CUSTODIA_ACREDITADA", False))
-            inf["AGENTE_IDENTIFICADO"] = c22.checkbox("Agente identificado", value=inf.get("AGENTE_IDENTIFICADO", False))
+            inf["METADATOS_COMPLETOS"] = c20.checkbox(
+                "Metadatos completos", value=inf.get("METADATOS_COMPLETOS", False), key=f"metadata_{idx}"
+            )
+            inf["CADENA_CUSTODIA_ACREDITADA"] = c21.checkbox(
+                "Cadena de custodia acreditada", value=inf.get("CADENA_CUSTODIA_ACREDITADA", False), key=f"cadena_{idx}"
+            )
+            inf["AGENTE_IDENTIFICADO"] = c22.checkbox(
+                "Agente identificado", value=inf.get("AGENTE_IDENTIFICADO", False), key=f"agente_{idx}"
+            )
 
     st.markdown("---")
     col_save1, col_save2 = st.columns(2)
@@ -381,18 +409,11 @@ if modo == "Crear descargos con nuevo cliente":
         else:
             try:
                 cliente = Cliente(
-                    NOMBRE=nombre,
-                    DNI=dni,
-                    NACIONALIDAD=nacionalidad,
-                    DOMICILIO_REAL=domicilio_real,
-                    DOMICILIO_PROCESAL=domicilio_procesal,
-                    DOMINIO=dominio,
-                    VEHICULO_MARCA=veh_marca,
-                    VEHICULO_MODELO=veh_modelo,
-                    ADJUNTA_DNI_IMG=adj_dni,
-                    ADJUNTA_CEDULA_IMG=adj_cedula,
-                    ADJUNTA_FIRMA_IMG=adj_firma,
-                    ADJUNTA_ACTA_IMG=adj_acta,
+                    NOMBRE=nombre, DNI=dni, NACIONALIDAD=nacionalidad,
+                    DOMICILIO_REAL=domicilio_real, DOMICILIO_PROCESAL=domicilio_procesal,
+                    DOMINIO=dominio, VEHICULO_MARCA=veh_marca, VEHICULO_MODELO=veh_modelo,
+                    ADJUNTA_DNI_IMG=adj_dni, ADJUNTA_CEDULA_IMG=adj_cedula,
+                    ADJUNTA_FIRMA_IMG=adj_firma, ADJUNTA_ACTA_IMG=adj_acta,
                 )
                 infrs = [Infraccion(**i) for i in st.session_state.infrs]
                 caso = Caso(cliente=cliente, infracciones=infrs)
@@ -414,18 +435,11 @@ if modo == "Crear descargos con nuevo cliente":
         else:
             try:
                 cliente = Cliente(
-                    NOMBRE=nombre,
-                    DNI=dni,
-                    NACIONALIDAD=nacionalidad,
-                    DOMICILIO_REAL=domicilio_real,
-                    DOMICILIO_PROCESAL=domicilio_procesal,
-                    DOMINIO=dominio,
-                    VEHICULO_MARCA=veh_marca,
-                    VEHICULO_MODELO=veh_modelo,
-                    ADJUNTA_DNI_IMG=adj_dni,
-                    ADJUNTA_CEDULA_IMG=adj_cedula,
-                    ADJUNTA_FIRMA_IMG=adj_firma,
-                    ADJUNTA_ACTA_IMG=adj_acta,
+                    NOMBRE=nombre, DNI=dni, NACIONALIDAD=nacionalidad,
+                    DOMICILIO_REAL=domicilio_real, DOMICILIO_PROCESAL=domicilio_procesal,
+                    DOMINIO=dominio, VEHICULO_MARCA=veh_marca, VEHICULO_MODELO=veh_modelo,
+                    ADJUNTA_DNI_IMG=adj_dni, ADJUNTA_CEDULA_IMG=adj_cedula,
+                    ADJUNTA_FIRMA_IMG=adj_firma, ADJUNTA_ACTA_IMG=adj_acta,
                 )
                 infrs = [Infraccion(**i) for i in st.session_state.infrs]
                 caso = Caso(cliente=cliente, infracciones=infrs)
@@ -440,3 +454,47 @@ if modo == "Crear descargos con nuevo cliente":
             except Exception as e:
                 st.exception(e)
 
+    # Botón para generar descargos desde el último JSON guardado
+    colg1, colg2 = st.columns([1,3])
+    if colg1.button("🧩 Generar descargos (.docx) con el último JSON"):
+        jp = st.session_state.get("last_json_path")
+        if not jp:
+            st.error("Primero guardá un JSON.")
+        else:
+            jpath = Path(jp)
+            ok, out_path = ejecutar_render(jpath)
+            if ok and out_path:
+                st.success(f"Archivos generados en: {out_path.parent}")
+
+else:
+    # Crear descargos con cliente existente
+    st.sidebar.subheader("Crear descargos con cliente existente")
+    clientes = sorted([p.name for p in BASE_DIR.iterdir() if p.is_dir()])
+    if not clientes:
+        st.info("No hay clientes todavía. Cambiá a 'Crear descargos con nuevo cliente'.")
+    else:
+        cli = st.sidebar.selectbox("Cliente", options=clientes)
+        jpaths = listar_jsons(cli)
+        if not jpaths:
+            st.warning("Ese cliente no tiene JSONs guardados.")
+        else:
+            opciones = [p.name for p in jpaths]
+            sel = st.selectbox("Elegí un JSON", options=opciones)
+            elegido = jpaths[opciones.index(sel)]
+
+            data = cargar_json(elegido)
+            st.code(json.dumps(data, ensure_ascii=False, indent=2), language="json")
+
+            cbtn1, cbtn2 = st.columns([1,3])
+            if cbtn1.button("🧩 Generar descargos (.docx) desde este JSON"):
+                ok, out_path = ejecutar_render(elegido)
+                if ok and out_path:
+                    st.success(f"Archivos generados en: {out_path.parent}")
+
+            st.markdown("---")
+            st.subheader("Duplicar como caso nuevo (para editar)")
+            nuevo_nombre = st.text_input("Nuevo nombre de cliente (o el mismo)", value=cli)
+            if st.button("📄 Duplicar JSON y pasar a edición"):
+                st.session_state.infrs = data.get("infracciones", [])
+                st.experimental_set_query_params(modo="Crear descargos con nuevo cliente")
+                st.success("Andá a la pestaña 'Crear descargos con nuevo cliente' (sidebar) — se prellenó con este JSON.")
