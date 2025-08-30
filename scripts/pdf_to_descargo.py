@@ -49,6 +49,20 @@ RE = {
     "desc_line": re.compile(r"No respetar luces de semáforo", re.IGNORECASE),
 }
 
+
+def _infer_tipo(text: str) -> str:
+    """Inferir tipo de infracción según palabras clave."""
+    t = text.lower()
+    if "velocidad" in t:
+        return "velocidad"
+    if "senda" in t:
+        return "senda_peatonal"
+    if "semaforo" in t or "barrera" in t:
+        return "semaforo"
+    if "luces" in t:
+        return "luces"
+    return "velocidad"
+
 def read_pdf_text(pdf_path: Path) -> str:
     txt_parts = []
     with pdfplumber.open(str(pdf_path)) as pdf:
@@ -85,7 +99,7 @@ def extract_fields(text: str) -> dict:
     if jurisdiccion:
         municipio = jurisdiccion.split("(")[0].strip().title()
 
-    tipo_infraccion = "semaforo" if RE["desc_line"].search(text) else ""
+    tipo_infraccion = _infer_tipo(text)
 
     fecha_hecho, hora_hecho = "", ""
     if fecha_hora:
@@ -130,7 +144,12 @@ def extract_fields(text: str) -> dict:
         # Tipo/Norma
         "TIPO_INFRACCION": tipo_infraccion,
         "ART_INVOCADO": articulo,
-        "ROTULO_CONDUCTA": "No respetar luces de semáforo",
+        "ROTULO_CONDUCTA": (
+            "No respetar los límites de velocidad" if tipo_infraccion == "velocidad" else
+            "No respetar la senda peatonal" if tipo_infraccion == "senda_peatonal" else
+            "No respetar luces de semáforo" if tipo_infraccion == "semaforo" else
+            "No encender luces bajas" if tipo_infraccion == "luces" else ""
+        ),
 
         # Flags probatorios (por defecto falsos)
         "NOTIFICACION_EN_60_DIAS": False,
@@ -168,7 +187,27 @@ def parse_pdf(pdf_source) -> dict:
     else:
         raise TypeError("pdf_source debe ser ruta, bytes o archivo-like")
 
-    return extract_fields(text)
+ codex/add-pdf-data-extraction-feature
+    ctx = extract_fields(text)
+    infr = {
+        "TIPO_INFRACCION": ctx.get("TIPO_INFRACCION", ""),
+        "NRO_ACTA": ctx.get("NRO_ACTA", ""),
+        "FECHA_HECHO": ctx.get("FECHA_HECHO", ""),
+        "HORA_HECHO": ctx.get("HORA_HECHO", ""),
+        "LUGAR": ctx.get("LUGAR", ""),
+        "JUZGADO": "",
+        "MUNICIPIO": ctx.get("MUNICIPIO", ""),
+        "EQUIPO_MARCA": ctx.get("EQUIPO_MARCA") or None,
+        "EQUIPO_MODELO": ctx.get("EQUIPO_MODELO") or None,
+        "EQUIPO_SERIE": ctx.get("EQUIPO_SERIE") or None,
+    }
+    cli = {
+        "DOMINIO": ctx.get("DOMINIO", ""),
+        "VEHICULO_MARCA": ctx.get("VEHICULO_MARCA", ""),
+        "VEHICULO_MODELO": ctx.get("VEHICULO_MODELO", ""),
+    }
+    return {"infracciones": [infr], "cliente": cli}
+main
 # --- fin API ---
 
 def save_json(ctx: dict, out_path: Path):

@@ -44,10 +44,12 @@ TipoInfraccion = Literal["semaforo", "velocidad", "senda_peatonal", "luces", "ci
 
 class Infraccion(BaseModel):
     TIPO_INFRACCION: TipoInfraccion
-    NRO_ACTA: str = Field(..., description="Número de acta (si coincide con NRO_CAUSA puedes repetir)")
+    NRO_ACTA: str = Field(..., description="Número de acta")
     FECHA_HECHO: str  # DD/MM/AAAA
     HORA_HECHO: str   # HH:MM
     LUGAR: str
+    JUZGADO: str
+    MUNICIPIO: str
     # Datos técnicos (opcionales)
     EQUIPO_MARCA: Optional[str] = None
     EQUIPO_MODELO: Optional[str] = None
@@ -98,10 +100,7 @@ class Cliente(BaseModel):
     ADJUNTA_ACTA_IMG: bool = True
 
 class Caso(BaseModel):
-    JUZGADO: str
-    MUNICIPIO: str
     FECHA_PRESENTACION: str = Field(default_factory=lambda: dt.date.today().strftime('%d/%m/%Y'))
-    NRO_CAUSA: str
     cliente: Cliente
     infracciones: List[Infraccion]
 
@@ -137,7 +136,8 @@ def cliente_dir(nombre: str) -> Path:
 def guardar_json(caso: Caso, nombre_cliente: str) -> Path:
     d = cliente_dir(nombre_cliente) / JSON_DIRNAME
     ts = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
-    fname = f"{ts}__{slugify(caso.NRO_CAUSA)}.json"
+    base = slugify(caso.infracciones[0].NRO_ACTA) if caso.infracciones else "sin_acta"
+    fname = f"{ts}__{base}.json"
     path = d / fname
     with open(path, "w", encoding="utf-8") as f:
         json.dump(caso.dict(), f, ensure_ascii=False, indent=2)
@@ -227,9 +227,13 @@ st.title("🧾 Descarguinator — Creador de JSONs dinámicos y generador de des
 
 # Sidebar: gestionar clientes
 st.sidebar.header("Cliente")
-modo = st.sidebar.radio("¿Qué querés hacer?", ["Crear caso nuevo", "Abrir JSON existente"], horizontal=False)
+modo = st.sidebar.radio(
+    "¿Qué querés hacer?",
+    ["Crear descargos con nuevo cliente", "Crear descargos con cliente existente"],
+    horizontal=False,
+)
 
-if modo == "Crear caso nuevo":
+if modo == "Crear descargos con nuevo cliente":
     uploaded_pdf = st.file_uploader("Acta en PDF", type="pdf")
     if uploaded_pdf and pdf_to_descargo:
         parser = getattr(pdf_to_descargo, "parse_pdf", None)
@@ -240,7 +244,6 @@ if modo == "Crear caso nuevo":
                 data = parser(uploaded_pdf)
                 st.session_state.infrs = data.get("infracciones", [])
                 cli = data.get("cliente", {})
-                case_mapping = {"exp_juzgado": "JUZGADO", "exp_municipio": "MUNICIPIO", "exp_nro_causa": "NRO_CAUSA"}
                 cli_mapping = {
                     "cli_nombre": "NOMBRE",
                     "cli_dni": "DNI",
@@ -254,10 +257,7 @@ if modo == "Crear caso nuevo":
                 for st_key, data_key in cli_mapping.items():
                     if data_key in cli:
                         st.session_state[st_key] = cli[data_key]
-                for st_key, data_key in case_mapping.items():
-                    if data_key in data:
-                        st.session_state[st_key] = data[data_key]
-                st.experimental_rerun()
+                st.rerun()
             except Exception as e:
                 st.error(f"Fallo procesando PDF: {e}")
     elif uploaded_pdf and pdf_to_descargo is None:
@@ -288,12 +288,8 @@ if modo == "Crear caso nuevo":
     firma_file = st.sidebar.file_uploader("Archivo Firma", type=["jpg","jpeg","png"], key="firma_file")
     adj_acta = st.sidebar.checkbox("Adjunta Acta", value=True)
 
-    nro_causa = (
-        st.session_state.infrs[0]["NRO_ACTA"]
-        if st.session_state.get("infrs") and st.session_state.infrs[0].get("NRO_ACTA")
-        else st.session_state.get("exp_nro_causa", "")
-    )
-
+ codex/add-pdf-data-extraction-feature
+ main
     st.markdown("---")
     st.subheader("Infracciones del caso")
 
@@ -308,6 +304,8 @@ if modo == "Crear caso nuevo":
             "FECHA_HECHO": dt.date.today().strftime('%d/%m/%Y'),
             "HORA_HECHO": "00:00",
             "LUGAR": "",
+            "JUZGADO": "",
+            "MUNICIPIO": "",
             "EQUIPO_MARCA": None,
             "EQUIPO_MODELO": None,
             "EQUIPO_SERIE": None,
@@ -330,40 +328,50 @@ if modo == "Crear caso nuevo":
             )
             inf["NRO_ACTA"] = c2.text_input("Nro. Acta", value=inf.get("NRO_ACTA",""), key=f"acta_{idx}")
             inf["LUGAR"] = c3.text_input("Lugar", value=inf.get("LUGAR",""), key=f"lugar_{idx}")
-            c4, c5 = st.columns(2)
-            inf["FECHA_HECHO"] = c4.text_input("Fecha del hecho (DD/MM/AAAA)", value=inf.get("FECHA_HECHO",""), key=f"fecha_{idx}")
-            inf["HORA_HECHO"] = c5.text_input("Hora del hecho (HH:MM)", value=inf.get("HORA_HECHO",""), key=f"hora_{idx}")
+            c4, c5, c6 = st.columns(3)
+            inf["JUZGADO"] = c4.text_input("Juzgado", value=inf.get("JUZGADO",""), key=f"juz_{idx}")
+            inf["MUNICIPIO"] = c5.text_input("Municipio", value=inf.get("MUNICIPIO",""), key=f"muni_{idx}")
+            inf["FECHA_HECHO"] = c6.text_input("Fecha del hecho (DD/MM/AAAA)", value=inf.get("FECHA_HECHO",""), key=f"fecha_{idx}")
+            c7, c8 = st.columns(2)
+            inf["HORA_HECHO"] = c7.text_input("Hora del hecho (HH:MM)", value=inf.get("HORA_HECHO",""), key=f"hora_{idx}")
 
             if inf["TIPO_INFRACCION"] == "velocidad":
                 st.markdown("**Datos del cinemómetro**")
-                c6, c7, c8 = st.columns(3)
-                inf["EQUIPO_MARCA"] = c6.text_input("Equipo: Marca", value=inf.get("EQUIPO_MARCA") or "", key=f"emarca_{idx}") or None
-                inf["EQUIPO_MODELO"] = c7.text_input("Equipo: Modelo", value=inf.get("EQUIPO_MODELO") or "", key=f"emodelo_{idx}") or None
-                inf["EQUIPO_SERIE"] = c8.text_input("Equipo: Serie", value=inf.get("EQUIPO_SERIE") or "", key=f"eserie_{idx}") or None
+                c9, c10, c11 = st.columns(3)
+                inf["EQUIPO_MARCA"] = c9.text_input("Equipo: Marca", value=inf.get("EQUIPO_MARCA") or "", key=f"emarca_{idx}") or None
+                inf["EQUIPO_MODELO"] = c10.text_input("Equipo: Modelo", value=inf.get("EQUIPO_MODELO") or "", key=f"emodelo_{idx}") or None
+                inf["EQUIPO_SERIE"] = c11.text_input("Equipo: Serie", value=inf.get("EQUIPO_SERIE") or "", key=f"eserie_{idx}") or None
                 st.markdown("**Chequeos de validez**")
-                c9, c10, c11, c12 = st.columns(4)
-                inf["INTI_INSPECCION_VIGENTE"] = c9.checkbox("INTI vigente", value=bool(inf.get("INTI_INSPECCION_VIGENTE")))
-                inf["AUTORIZACION_MUNICIPAL_VIGENTE"] = c10.checkbox("Autorización municipal vigente", value=bool(inf.get("AUTORIZACION_MUNICIPAL_VIGENTE")))
-                inf["SENALIZACION_28BIS_CUMPLIDA"] = c11.checkbox("Señalización art. 28 bis", value=bool(inf.get("SENALIZACION_28BIS_CUMPLIDA")))
-                inf["PATENTE_LEGIBLE"] = c12.checkbox("Patente legible en foto", value=bool(inf.get("PATENTE_LEGIBLE")))
+                c12, c13, c14, c15 = st.columns(4)
+                inf["INTI_INSPECCION_VIGENTE"] = c12.checkbox("INTI vigente", value=bool(inf.get("INTI_INSPECCION_VIGENTE")))
+                inf["AUTORIZACION_MUNICIPAL_VIGENTE"] = c13.checkbox("Autorización municipal vigente", value=bool(inf.get("AUTORIZACION_MUNICIPAL_VIGENTE")))
+                inf["SENALIZACION_28BIS_CUMPLIDA"] = c14.checkbox("Señalización art. 28 bis", value=bool(inf.get("SENALIZACION_28BIS_CUMPLIDA")))
+                inf["PATENTE_LEGIBLE"] = c15.checkbox("Patente legible en foto", value=bool(inf.get("PATENTE_LEGIBLE")))
 
             st.markdown("**Validez formal / notificaciones**")
-            c13, c14, c15, c16 = st.columns(4)
-            inf["NOTIFICACION_EN_60_DIAS"] = c13.checkbox("Notificación < 60 días", value=inf.get("NOTIFICACION_EN_60_DIAS", False))
-            inf["NOTIFICACION_FEHACIENTE"] = c14.checkbox("Notificación fehaciente", value=inf.get("NOTIFICACION_FEHACIENTE", False))
-            inf["IMPUTACION_INDICA_NORMA"] = c15.checkbox("Indica norma violada", value=inf.get("IMPUTACION_INDICA_NORMA", False))
-            inf["FIRMA_DIGITAL_VALIDA"] = c16.checkbox("Firma digital válida", value=inf.get("FIRMA_DIGITAL_VALIDA", False))
+            c16, c17, c18, c19 = st.columns(4)
+            inf["NOTIFICACION_EN_60_DIAS"] = c16.checkbox("Notificación < 60 días", value=inf.get("NOTIFICACION_EN_60_DIAS", False))
+            inf["NOTIFICACION_FEHACIENTE"] = c17.checkbox("Notificación fehaciente", value=inf.get("NOTIFICACION_FEHACIENTE", False))
+            inf["IMPUTACION_INDICA_NORMA"] = c18.checkbox("Indica norma violada", value=inf.get("IMPUTACION_INDICA_NORMA", False))
+            inf["FIRMA_DIGITAL_VALIDA"] = c19.checkbox("Firma digital válida", value=inf.get("FIRMA_DIGITAL_VALIDA", False))
 
-            c17, c18, c19 = st.columns(3)
-            inf["METADATOS_COMPLETOS"] = c17.checkbox("Metadatos completos", value=inf.get("METADATOS_COMPLETOS", False))
-            inf["CADENA_CUSTODIA_ACREDITADA"] = c18.checkbox("Cadena de custodia acreditada", value=inf.get("CADENA_CUSTODIA_ACREDITADA", False))
-            inf["AGENTE_IDENTIFICADO"] = c19.checkbox("Agente identificado", value=inf.get("AGENTE_IDENTIFICADO", False))
+            c20, c21, c22 = st.columns(3)
+            inf["METADATOS_COMPLETOS"] = c20.checkbox("Metadatos completos", value=inf.get("METADATOS_COMPLETOS", False))
+            inf["CADENA_CUSTODIA_ACREDITADA"] = c21.checkbox("Cadena de custodia acreditada", value=inf.get("CADENA_CUSTODIA_ACREDITADA", False))
+            inf["AGENTE_IDENTIFICADO"] = c22.checkbox("Agente identificado", value=inf.get("AGENTE_IDENTIFICADO", False))
 
     st.markdown("---")
     col_save1, col_save2 = st.columns(2)
     if col_save1.button("💾 Guardar JSON del caso"):
-        if not nombre or not dni or not juzgado or not municipio or not nro_causa or not st.session_state.infrs:
-            st.error("Completá: Nombre, DNI, Juzgado, Municipio, Nro. de acta y al menos 1 infracción.")
+ codex/add-pdf-data-extraction-feature
+        faltan = (
+            not nombre or not dni or not st.session_state.infrs or
+            any(not i.get("JUZGADO") or not i.get("MUNICIPIO") or not i.get("NRO_ACTA") for i in st.session_state.infrs)
+        )
+        if faltan:
+            st.error("Completá: Nombre, DNI y Juzgado/Municipio/Nro. de acta en cada infracción.")
+
+ main
         else:
             try:
                 cliente = Cliente(
@@ -381,17 +389,27 @@ if modo == "Crear caso nuevo":
                     ADJUNTA_ACTA_IMG=adj_acta,
                 )
                 infrs = [Infraccion(**i) for i in st.session_state.infrs]
-                caso = Caso(JUZGADO=juzgado, MUNICIPIO=municipio, NRO_CAUSA=nro_causa, cliente=cliente, infracciones=infrs)
+                caso = Caso(cliente=cliente, infracciones=infrs)
                 path = guardar_json(caso, nombre)
-                guardar_adjuntos(slugify(nro_causa), dni_file, ced_file, firma_file)
+codex/add-pdf-data-extraction-feature
+                base_slug = slugify(st.session_state.infrs[0]["NRO_ACTA"]) if st.session_state.infrs else ""
+                guardar_adjuntos(base_slug, dni_file, ced_file, firma_file)
+
+main
                 st.success(f"JSON guardado: {path}")
                 st.session_state["last_json_path"] = str(path)
             except Exception as e:
                 st.exception(e)
 
     if col_save2.button("💾 Guardar y generar descargos (.docx)"):
-        if not nombre or not dni or not juzgado or not municipio or not nro_causa or not st.session_state.infrs:
-            st.error("Completá: Nombre, DNI, Juzgado, Municipio, Nro. de acta y al menos 1 infracción.")
+codex/add-pdf-data-extraction-feature
+        faltan = (
+            not nombre or not dni or not st.session_state.infrs or
+            any(not i.get("JUZGADO") or not i.get("MUNICIPIO") or not i.get("NRO_ACTA") for i in st.session_state.infrs)
+        )
+        if faltan:
+            st.error("Completá: Nombre, DNI y Juzgado/Municipio/Nro. de acta en cada infracción.")
+ main
         else:
             try:
                 cliente = Cliente(
@@ -409,9 +427,12 @@ if modo == "Crear caso nuevo":
                     ADJUNTA_ACTA_IMG=adj_acta,
                 )
                 infrs = [Infraccion(**i) for i in st.session_state.infrs]
-                caso = Caso(JUZGADO=juzgado, MUNICIPIO=municipio, NRO_CAUSA=nro_causa, cliente=cliente, infracciones=infrs)
+                caso = Caso(cliente=cliente, infracciones=infrs)
                 path = guardar_json(caso, nombre)
-                guardar_adjuntos(slugify(nro_causa), dni_file, ced_file, firma_file)
+ codex/add-pdf-data-extraction-feature
+                base_slug = slugify(st.session_state.infrs[0]["NRO_ACTA"]) if st.session_state.infrs else ""
+                guardar_adjuntos(base_slug, dni_file, ced_file, firma_file)
+ main
                 st.success(f"JSON guardado: {path}")
                 st.session_state["last_json_path"] = str(path)
                 ok, out_path = ejecutar_render(path)
@@ -433,11 +454,11 @@ if modo == "Crear caso nuevo":
                 st.success(f"Archivos generados en: {out_path.parent}")
 
 else:
-    # Abrir JSON existente
-    st.sidebar.subheader("Abrir JSON existente por cliente")
+    # Crear descargos con cliente existente
+    st.sidebar.subheader("Crear descargos con cliente existente")
     clientes = sorted([p.name for p in BASE_DIR.iterdir() if p.is_dir()])
     if not clientes:
-        st.info("No hay clientes todavía. Cambiá a 'Crear caso nuevo'.")
+        st.info("No hay clientes todavía. Cambiá a 'Crear descargos con nuevo cliente'.")
     else:
         cli = st.sidebar.selectbox("Cliente", options=clientes)
         jpaths = listar_jsons(cli)
@@ -462,5 +483,5 @@ else:
             nuevo_nombre = st.text_input("Nuevo nombre de cliente (o el mismo)", value=cli)
             if st.button("📄 Duplicar JSON y pasar a edición"):
                 st.session_state.infrs = data.get("infracciones", [])
-                st.experimental_set_query_params(modo="Crear caso nuevo")
-                st.success("Andá a la pestaña 'Crear caso nuevo' (sidebar) — se prellenó con este JSON.")
+                st.experimental_set_query_params(modo="Crear descargos con nuevo cliente")
+                st.success("Andá a la pestaña 'Crear descargos con nuevo cliente' (sidebar) — se prellenó con este JSON.")
