@@ -149,27 +149,25 @@ def extract_fields(text: str) -> dict:
 
 # --- API para la app (Streamlit) ---
 def parse_pdf(pdf_source) -> dict:
-    """
-    Recibe: ruta (str/Path) o un archivo en memoria (ej. st.uploaded_file).
-    Devuelve: dict ctx con los campos parseados.
-    """
-    # 1) obtener el texto del PDF
+    """Acepta ruta, bytes o archivo-like y devuelve el contexto parseado."""
     if isinstance(pdf_source, (str, Path)):
         text = read_pdf_text(Path(pdf_source))
-    else:
-        # Streamlit sube un UploadedFile (archivo en memoria)
+    elif isinstance(pdf_source, (bytes, bytearray)):
+        with pdfplumber.open(io.BytesIO(pdf_source)) as pdf:
+            parts = [page.extract_text() or "" for page in pdf.pages]
+        text = "\n".join(parts)
+    elif hasattr(pdf_source, "read"):
         data = pdf_source.read()
         try:
-            pdf_source.seek(0)  # por si después la app vuelve a leer el archivo
+            pdf_source.seek(0)
         except Exception:
             pass
         with pdfplumber.open(io.BytesIO(data)) as pdf:
-            parts = []
-            for page in pdf.pages:
-                parts.append(page.extract_text() or "")
-            text = "\n".join(parts)
+            parts = [page.extract_text() or "" for page in pdf.pages]
+        text = "\n".join(parts)
+    else:
+        raise TypeError("pdf_source debe ser ruta, bytes o archivo-like")
 
-    # 2) extraer campos
     return extract_fields(text)
 # --- fin API ---
 

@@ -31,9 +31,11 @@ TEMPLATE_DOCX   = BASE_ROOT / "plantillas" / "MODELO_DESCARGO_INTEGRAL_EXTENSO.d
 RENDER_SCRIPT   = BASE_ROOT / "scripts" / "descargos_render_v2.py"
 SALIDAS_DIRNAME = "salidas"
 JSON_DIRNAME    = "json"
+ADJUNTOS_DIR    = BASE_ROOT / "adjuntos"
 
 # asegurar estructura
 BASE_DIR.mkdir(parents=True, exist_ok=True)
+ADJUNTOS_DIR.mkdir(parents=True, exist_ok=True)
 
 # =============================
 # Modelos de datos (Pydantic)
@@ -92,6 +94,7 @@ class Cliente(BaseModel):
     VEHICULO_MODELO: str
     ADJUNTA_DNI_IMG: bool = True
     ADJUNTA_CEDULA_IMG: bool = True
+    ADJUNTA_FIRMA_IMG: bool = True
     ADJUNTA_ACTA_IMG: bool = True
 
 class Caso(BaseModel):
@@ -139,6 +142,22 @@ def guardar_json(caso: Caso, nombre_cliente: str) -> Path:
     with open(path, "w", encoding="utf-8") as f:
         json.dump(caso.dict(), f, ensure_ascii=False, indent=2)
     return path
+
+
+def guardar_adjuntos(base_name: str, dni_file, cedula_file, firma_file) -> None:
+    """Guarda imágenes de adjuntos en la carpeta global de adjuntos."""
+    if not base_name:
+        return
+    for upl, suf in [
+        (dni_file, "dni"),
+        (cedula_file, "cedula"),
+        (firma_file, "firma"),
+    ]:
+        if upl is None:
+            continue
+        ext = Path(upl.name).suffix or ".jpg"
+        dest = ADJUNTOS_DIR / f"{base_name}_{suf}{ext}"
+        dest.write_bytes(upl.getvalue())
 
 def listar_jsons(nombre_cliente: str) -> List[Path]:
     d = cliente_dir(nombre_cliente) / JSON_DIRNAME
@@ -255,16 +274,25 @@ if modo == "Crear caso nuevo":
     veh_marca = st.sidebar.text_input("Vehículo marca", key="cli_veh_marca")
     veh_modelo = st.sidebar.text_input("Vehículo modelo", key="cli_veh_modelo")
 
+    st.sidebar.subheader("Datos del expediente")
+    juzgado = st.sidebar.text_input("Juzgado", key="exp_juzgado")
+    municipio = st.sidebar.text_input("Municipio", key="exp_municipio")
+
     st.sidebar.divider()
-    st.sidebar.markdown("**Adjuntos** (marcar si se adjuntarán al descargo)")
+    st.sidebar.markdown("**Adjuntos**")
     adj_dni = st.sidebar.checkbox("Adjunta DNI", value=True)
+    dni_file = st.sidebar.file_uploader("Archivo DNI", type=["jpg","jpeg","png"], key="dni_file")
     adj_cedula = st.sidebar.checkbox("Adjunta Cédula", value=True)
+    ced_file = st.sidebar.file_uploader("Archivo Cédula", type=["jpg","jpeg","png"], key="ced_file")
+    adj_firma = st.sidebar.checkbox("Adjunta Firma", value=True)
+    firma_file = st.sidebar.file_uploader("Archivo Firma", type=["jpg","jpeg","png"], key="firma_file")
     adj_acta = st.sidebar.checkbox("Adjunta Acta", value=True)
 
-    st.subheader("Datos del expediente")
-    juzgado = st.text_input("Juzgado", placeholder="Ingrese juzgado", key="exp_juzgado")
-    municipio = st.text_input("Municipio", placeholder="Ingrese municipio", key="exp_municipio")
-    nro_causa = st.text_input("Nro. de causa / expediente", key="exp_nro_causa")
+    nro_causa = (
+        st.session_state.infrs[0]["NRO_ACTA"]
+        if st.session_state.get("infrs") and st.session_state.infrs[0].get("NRO_ACTA")
+        else st.session_state.get("exp_nro_causa", "")
+    )
 
     st.markdown("---")
     st.subheader("Infracciones del caso")
@@ -335,7 +363,7 @@ if modo == "Crear caso nuevo":
     col_save1, col_save2 = st.columns(2)
     if col_save1.button("💾 Guardar JSON del caso"):
         if not nombre or not dni or not juzgado or not municipio or not nro_causa or not st.session_state.infrs:
-            st.error("Completá: Nombre, DNI, Juzgado, Municipio, Nro. de causa y al menos 1 infracción.")
+            st.error("Completá: Nombre, DNI, Juzgado, Municipio, Nro. de acta y al menos 1 infracción.")
         else:
             try:
                 cliente = Cliente(
@@ -349,11 +377,13 @@ if modo == "Crear caso nuevo":
                     VEHICULO_MODELO=veh_modelo,
                     ADJUNTA_DNI_IMG=adj_dni,
                     ADJUNTA_CEDULA_IMG=adj_cedula,
+                    ADJUNTA_FIRMA_IMG=adj_firma,
                     ADJUNTA_ACTA_IMG=adj_acta,
                 )
                 infrs = [Infraccion(**i) for i in st.session_state.infrs]
                 caso = Caso(JUZGADO=juzgado, MUNICIPIO=municipio, NRO_CAUSA=nro_causa, cliente=cliente, infracciones=infrs)
                 path = guardar_json(caso, nombre)
+                guardar_adjuntos(slugify(nro_causa), dni_file, ced_file, firma_file)
                 st.success(f"JSON guardado: {path}")
                 st.session_state["last_json_path"] = str(path)
             except Exception as e:
@@ -361,7 +391,7 @@ if modo == "Crear caso nuevo":
 
     if col_save2.button("💾 Guardar y generar descargos (.docx)"):
         if not nombre or not dni or not juzgado or not municipio or not nro_causa or not st.session_state.infrs:
-            st.error("Completá: Nombre, DNI, Juzgado, Municipio, Nro. de causa y al menos 1 infracción.")
+            st.error("Completá: Nombre, DNI, Juzgado, Municipio, Nro. de acta y al menos 1 infracción.")
         else:
             try:
                 cliente = Cliente(
@@ -375,11 +405,13 @@ if modo == "Crear caso nuevo":
                     VEHICULO_MODELO=veh_modelo,
                     ADJUNTA_DNI_IMG=adj_dni,
                     ADJUNTA_CEDULA_IMG=adj_cedula,
+                    ADJUNTA_FIRMA_IMG=adj_firma,
                     ADJUNTA_ACTA_IMG=adj_acta,
                 )
                 infrs = [Infraccion(**i) for i in st.session_state.infrs]
                 caso = Caso(JUZGADO=juzgado, MUNICIPIO=municipio, NRO_CAUSA=nro_causa, cliente=cliente, infracciones=infrs)
                 path = guardar_json(caso, nombre)
+                guardar_adjuntos(slugify(nro_causa), dni_file, ced_file, firma_file)
                 st.success(f"JSON guardado: {path}")
                 st.session_state["last_json_path"] = str(path)
                 ok, out_path = ejecutar_render(path)
