@@ -3,3 +3,4 @@ pydantic
 python-slugify
 python-docx
 openpyxl
+pdfplumber
