@@ -279,6 +279,10 @@ if modo == "Crear descargos con nuevo cliente":
     veh_marca = st.sidebar.text_input("Vehículo marca", key="cli_veh_marca")
     veh_modelo = st.sidebar.text_input("Vehículo modelo", key="cli_veh_modelo")
 
+    st.sidebar.subheader("Datos del expediente")
+    juzgado = st.sidebar.text_input("Juzgado", key="exp_juzgado")
+    municipio = st.sidebar.text_input("Municipio", key="exp_municipio")
+
     st.sidebar.divider()
     st.sidebar.markdown("**Adjuntos**")
     adj_dni = st.sidebar.checkbox("Adjunta DNI", value=True)
@@ -368,6 +372,7 @@ if modo == "Crear descargos con nuevo cliente":
         )
         if faltan:
             st.error("Completá: Nombre, DNI y Juzgado/Municipio/Nro. de acta en cada infracción.")
+
         else:
             try:
                 cliente = Cliente(
@@ -389,6 +394,7 @@ if modo == "Crear descargos con nuevo cliente":
                 path = guardar_json(caso, nombre)
                 base_slug = slugify(st.session_state.infrs[0]["NRO_ACTA"]) if st.session_state.infrs else ""
                 guardar_adjuntos(base_slug, dni_file, ced_file, firma_file)
+
                 st.success(f"JSON guardado: {path}")
                 st.session_state["last_json_path"] = str(path)
             except Exception as e:
@@ -422,6 +428,7 @@ if modo == "Crear descargos con nuevo cliente":
                 path = guardar_json(caso, nombre)
                 base_slug = slugify(st.session_state.infrs[0]["NRO_ACTA"]) if st.session_state.infrs else ""
                 guardar_adjuntos(base_slug, dni_file, ced_file, firma_file)
+
                 st.success(f"JSON guardado: {path}")
                 st.session_state["last_json_path"] = str(path)
                 ok, out_path = ejecutar_render(path)
