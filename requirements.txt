@@ -4,3 +4,4 @@ python-slugify
 python-docx
 openpyxl
 pdfplumber
+requests
