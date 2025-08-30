@@ -14,6 +14,11 @@ import streamlit as st
 from pydantic import BaseModel, Field, validator
 from slugify import slugify
 
+try:
+    import pdf_to_descargo
+except Exception:  # pragma: no cover - optional dependency
+    pdf_to_descargo = None
+
 # =============================
 # Configuración
 # =============================
@@ -206,16 +211,49 @@ st.sidebar.header("Cliente")
 modo = st.sidebar.radio("¿Qué querés hacer?", ["Crear caso nuevo", "Abrir JSON existente"], horizontal=False)
 
 if modo == "Crear caso nuevo":
+    uploaded_pdf = st.file_uploader("Acta en PDF", type="pdf")
+    if uploaded_pdf and pdf_to_descargo:
+        parser = getattr(pdf_to_descargo, "parse_pdf", None)
+        if parser is None:
+            st.error("pdf_to_descargo no tiene función parse_pdf")
+        else:
+            try:
+                data = parser(uploaded_pdf.read())
+                st.session_state.infrs = data.get("infracciones", [])
+                cli = data.get("cliente", {})
+                case_mapping = {"exp_juzgado": "JUZGADO", "exp_municipio": "MUNICIPIO", "exp_nro_causa": "NRO_CAUSA"}
+                cli_mapping = {
+                    "cli_nombre": "NOMBRE",
+                    "cli_dni": "DNI",
+                    "cli_nacionalidad": "NACIONALIDAD",
+                    "cli_dom_real": "DOMICILIO_REAL",
+                    "cli_dom_proc": "DOMICILIO_PROCESAL",
+                    "cli_dominio": "DOMINIO",
+                    "cli_veh_marca": "VEHICULO_MARCA",
+                    "cli_veh_modelo": "VEHICULO_MODELO",
+                }
+                for st_key, data_key in cli_mapping.items():
+                    if data_key in cli:
+                        st.session_state[st_key] = cli[data_key]
+                for st_key, data_key in case_mapping.items():
+                    if data_key in data:
+                        st.session_state[st_key] = data[data_key]
+                st.experimental_rerun()
+            except Exception as e:
+                st.error(f"Fallo procesando PDF: {e}")
+    elif uploaded_pdf and pdf_to_descargo is None:
+        st.warning("Instalá pdf_to_descargo para analizar PDFs automáticamente")
+
     st.sidebar.subheader("Datos del cliente")
     nombre = st.sidebar.text_input("Nombre completo", key="cli_nombre")
     dni = st.sidebar.text_input("DNI", key="cli_dni")
-    nacionalidad = st.sidebar.text_input("Nacionalidad", value="Argentina")
-    domicilio_real = st.sidebar.text_area("Domicilio real")
-    mismo_domicilio = st.sidebar.checkbox("Domicilio procesal = real", value=True)
-    domicilio_procesal = domicilio_real if mismo_domicilio else st.sidebar.text_area("Domicilio procesal")
-    dominio = st.sidebar.text_input("Dominio (patente)")
-    veh_marca = st.sidebar.text_input("Vehículo marca")
-    veh_modelo = st.sidebar.text_input("Vehículo modelo")
+    nacionalidad = st.sidebar.text_input("Nacionalidad", value="Argentina", key="cli_nacionalidad")
+    domicilio_real = st.sidebar.text_area("Domicilio real", key="cli_dom_real")
+    mismo_domicilio = st.sidebar.checkbox("Domicilio procesal = real", value=True, key="cli_same_dom")
+    domicilio_procesal = st.session_state.cli_dom_real if mismo_domicilio else st.sidebar.text_area("Domicilio procesal", key="cli_dom_proc")
+    dominio = st.sidebar.text_input("Dominio (patente)", key="cli_dominio")
+    veh_marca = st.sidebar.text_input("Vehículo marca", key="cli_veh_marca")
+    veh_modelo = st.sidebar.text_input("Vehículo modelo", key="cli_veh_modelo")
 
     st.sidebar.divider()
     st.sidebar.markdown("**Adjuntos** (marcar si se adjuntarán al descargo)")
@@ -224,9 +262,9 @@ if modo == "Crear caso nuevo":
     adj_acta = st.sidebar.checkbox("Adjunta Acta", value=True)
 
     st.subheader("Datos del expediente")
-    juzgado = st.text_input("Juzgado", placeholder="Ingrese juzgado")
-    municipio = st.text_input("Municipio", placeholder="Ingrese municipio")
-    nro_causa = st.text_input("Nro. de causa / expediente")
+    juzgado = st.text_input("Juzgado", placeholder="Ingrese juzgado", key="exp_juzgado")
+    municipio = st.text_input("Municipio", placeholder="Ingrese municipio", key="exp_municipio")
+    nro_causa = st.text_input("Nro. de causa / expediente", key="exp_nro_causa")
 
     st.markdown("---")
     st.subheader("Infracciones del caso")
@@ -294,7 +332,8 @@ if modo == "Crear caso nuevo":
             inf["AGENTE_IDENTIFICADO"] = c19.checkbox("Agente identificado", value=inf.get("AGENTE_IDENTIFICADO", False))
 
     st.markdown("---")
-    if st.button("💾 Guardar JSON del caso"):
+    col_save1, col_save2 = st.columns(2)
+    if col_save1.button("💾 Guardar JSON del caso"):
         if not nombre or not dni or not juzgado or not municipio or not nro_causa or not st.session_state.infrs:
             st.error("Completá: Nombre, DNI, Juzgado, Municipio, Nro. de causa y al menos 1 infracción.")
         else:
@@ -317,6 +356,35 @@ if modo == "Crear caso nuevo":
                 path = guardar_json(caso, nombre)
                 st.success(f"JSON guardado: {path}")
                 st.session_state["last_json_path"] = str(path)
+            except Exception as e:
+                st.exception(e)
+
+    if col_save2.button("💾 Guardar y generar descargos (.docx)"):
+        if not nombre or not dni or not juzgado or not municipio or not nro_causa or not st.session_state.infrs:
+            st.error("Completá: Nombre, DNI, Juzgado, Municipio, Nro. de causa y al menos 1 infracción.")
+        else:
+            try:
+                cliente = Cliente(
+                    NOMBRE=nombre,
+                    DNI=dni,
+                    NACIONALIDAD=nacionalidad,
+                    DOMICILIO_REAL=domicilio_real,
+                    DOMICILIO_PROCESAL=domicilio_procesal,
+                    DOMINIO=dominio,
+                    VEHICULO_MARCA=veh_marca,
+                    VEHICULO_MODELO=veh_modelo,
+                    ADJUNTA_DNI_IMG=adj_dni,
+                    ADJUNTA_CEDULA_IMG=adj_cedula,
+                    ADJUNTA_ACTA_IMG=adj_acta,
+                )
+                infrs = [Infraccion(**i) for i in st.session_state.infrs]
+                caso = Caso(JUZGADO=juzgado, MUNICIPIO=municipio, NRO_CAUSA=nro_causa, cliente=cliente, infracciones=infrs)
+                path = guardar_json(caso, nombre)
+                st.success(f"JSON guardado: {path}")
+                st.session_state["last_json_path"] = str(path)
+                ok, out_path = ejecutar_render(path)
+                if ok and out_path:
+                    st.success(f"Archivos generados en: {out_path.parent}")
             except Exception as e:
                 st.exception(e)
 
