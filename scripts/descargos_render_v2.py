@@ -413,26 +413,48 @@ def main() -> None:
 
     plantilla_path = Path(args.plantilla).resolve()
     caso_path = Path(args.caso).resolve()
+    raw_ctx = load_json(caso_path)
 
-    ctx = load_json(caso_path)
-    ctx = _apply_defaults(ctx)
+    # Soporta JSON con múltiples infracciones (clave "infracciones").
+    if "infracciones" in raw_ctx:
+        cliente = raw_ctx.get("cliente", {})
+        base_ctx = {k: v for k, v in raw_ctx.items() if k not in ("cliente", "infracciones")}
+        base_ctx.update(cliente)
+        base_ctx = _apply_defaults(base_ctx)
 
-    # Nombre de salida por defecto
-    if args.salida:
-        out_path = Path(args.salida).resolve()
-        out_path.parent.mkdir(parents=True, exist_ok=True)
+        # Directorio de salida
+        out_dir = Path(args.salida).resolve() if args.salida else DIR_SALIDAS
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        for infr in raw_ctx["infracciones"]:
+            ctx = dict(base_ctx)
+            ctx.update(infr)
+            ctx = _apply_defaults(ctx)
+            nro = ctx.get("NRO_ACTA", "SIN_ACTA")
+            out_path = out_dir / f"DESCARGO_{nro}_{date.today()}.docx"
+            try:
+                render_docx(plantilla_path, ctx, out_path, estricto=args.estricto)
+                print(f"OK -> {out_path}")
+            except Exception as e:
+                print(f"ERROR en {nro}: {e}", file=sys.stderr)
     else:
-        nro = ctx.get("NRO_ACTA", "SIN_ACTA")
-        out_path = (DIR_SALIDAS / f"DESCARGO_{nro}_{date.today()}.docx").resolve()
+        ctx = _apply_defaults(raw_ctx)
+        # Nombre de salida por defecto
+        if args.salida:
+            out_path = Path(args.salida).resolve()
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+        else:
+            nro = ctx.get("NRO_ACTA", "SIN_ACTA")
+            out_path = (DIR_SALIDAS / f"DESCARGO_{nro}_{date.today()}.docx").resolve()
 
-    # Render
-    try:
-        render_docx(plantilla_path, ctx, out_path, estricto=args.estricto)
-    except Exception as e:
-        print(f"ERROR: {e}", file=sys.stderr)
-        sys.exit(1)
+        # Render
+        try:
+            render_docx(plantilla_path, ctx, out_path, estricto=args.estricto)
+        except Exception as e:
+            print(f"ERROR: {e}", file=sys.stderr)
+            sys.exit(1)
 
-    print(f"OK -> {out_path}")
+        print(f"OK -> {out_path}")
 
 
 if __name__ == "__main__":
