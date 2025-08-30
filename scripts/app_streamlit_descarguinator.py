@@ -234,7 +234,6 @@ modo = st.sidebar.radio(
     ["Crear descargos con nuevo cliente", "Crear descargos con cliente existente"],
     horizontal=False,
 )
-
 if modo == "Crear descargos con nuevo cliente":
     uploaded_pdf = st.file_uploader("Acta en PDF", type="pdf", key="pdf_uploader")
     if uploaded_pdf and pdf_to_descargo and st.session_state.get("_pdf_last") != uploaded_pdf.name:
@@ -247,6 +246,7 @@ if modo == "Crear descargos con nuevo cliente":
                 if "infrs" not in st.session_state:
                     st.session_state.infrs = []
                 st.session_state.infrs.append(data.get("infracciones", [{}])[0])
+
                 cli = data.get("cliente", {})
                 cli_mapping = {
                     "cli_nombre": "NOMBRE",
@@ -261,6 +261,7 @@ if modo == "Crear descargos con nuevo cliente":
                 for st_key, data_key in cli_mapping.items():
                     if data_key in cli:
                         st.session_state[st_key] = cli[data_key]
+
                 st.session_state._pdf_last = uploaded_pdf.name
                 st.session_state.pdf_uploader = None
             except Exception as e:
@@ -281,6 +282,10 @@ if modo == "Crear descargos con nuevo cliente":
     dominio = st.sidebar.text_input("Dominio (patente)", key="cli_dominio")
     veh_marca = st.sidebar.text_input("Vehículo marca", key="cli_veh_marca")
     veh_modelo = st.sidebar.text_input("Vehículo modelo", key="cli_veh_modelo")
+
+    st.sidebar.subheader("Datos del expediente")
+    juzgado = st.sidebar.text_input("Juzgado", key="exp_juzgado")
+    municipio = st.sidebar.text_input("Municipio", key="exp_municipio")
 
     st.sidebar.divider()
     st.sidebar.markdown("**Adjuntos**")
@@ -435,47 +440,3 @@ if modo == "Crear descargos con nuevo cliente":
             except Exception as e:
                 st.exception(e)
 
-    # Botón para generar descargos desde el último JSON guardado
-    colg1, colg2 = st.columns([1,3])
-    if colg1.button("🧩 Generar descargos (.docx) con el último JSON"):
-        jp = st.session_state.get("last_json_path")
-        if not jp:
-            st.error("Primero guardá un JSON.")
-        else:
-            jpath = Path(jp)
-            ok, out_path = ejecutar_render(jpath)
-            if ok and out_path:
-                st.success(f"Archivos generados en: {out_path.parent}")
-
-else:
-    # Crear descargos con cliente existente
-    st.sidebar.subheader("Crear descargos con cliente existente")
-    clientes = sorted([p.name for p in BASE_DIR.iterdir() if p.is_dir()])
-    if not clientes:
-        st.info("No hay clientes todavía. Cambiá a 'Crear descargos con nuevo cliente'.")
-    else:
-        cli = st.sidebar.selectbox("Cliente", options=clientes)
-        jpaths = listar_jsons(cli)
-        if not jpaths:
-            st.warning("Ese cliente no tiene JSONs guardados.")
-        else:
-            opciones = [p.name for p in jpaths]
-            sel = st.selectbox("Elegí un JSON", options=opciones)
-            elegido = jpaths[opciones.index(sel)]
-
-            data = cargar_json(elegido)
-            st.code(json.dumps(data, ensure_ascii=False, indent=2), language="json")
-
-            cbtn1, cbtn2 = st.columns([1,3])
-            if cbtn1.button("🧩 Generar descargos (.docx) desde este JSON"):
-                ok, out_path = ejecutar_render(elegido)
-                if ok and out_path:
-                    st.success(f"Archivos generados en: {out_path.parent}")
-
-            st.markdown("---")
-            st.subheader("Duplicar como caso nuevo (para editar)")
-            nuevo_nombre = st.text_input("Nuevo nombre de cliente (o el mismo)", value=cli)
-            if st.button("📄 Duplicar JSON y pasar a edición"):
-                st.session_state.infrs = data.get("infracciones", [])
-                st.experimental_set_query_params(modo="Crear descargos con nuevo cliente")
-                st.success("Andá a la pestaña 'Crear descargos con nuevo cliente' (sidebar) — se prellenó con este JSON.")
