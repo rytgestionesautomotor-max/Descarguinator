@@ -64,9 +64,9 @@ class Infraccion(BaseModel):
 
     # Notificación / validez probatoria
     NOTIFICACION_EN_60_DIAS: bool = False
-    NOTIFICACION_FEHACIENTE: bool = False
-    IMPUTACION_INDICA_NORMA: bool = False
-    FIRMA_DIGITAL_VALIDA: bool = False
+    NOTIFICACION_FEHACIENTE: bool = True
+    IMPUTACION_INDICA_NORMA: bool = True
+    FIRMA_DIGITAL_VALIDA: bool = True
     METADATOS_COMPLETOS: bool = False
     CADENA_CUSTODIA_ACREDITADA: bool = False
     AGENTE_IDENTIFICADO: bool = False
@@ -248,46 +248,47 @@ modo = st.sidebar.radio(
     ["Crear descargos con nuevo cliente", "Crear descargos con cliente existente"],
 )
 if modo == "Crear descargos con nuevo cliente":
-    # Uploader con clave variable para permitir re-subir el mismo PDF
-    if "_pdf_uploader_key" not in st.session_state:
-        st.session_state._pdf_uploader_key = 0
-    uploaded_pdf = st.file_uploader(
-        "Acta en PDF",
+    if "processed_pdfs" not in st.session_state or not st.session_state.get("infrs"):
+        st.session_state.processed_pdfs = set()
+    uploaded_pdfs = st.file_uploader(
+        "Actas en PDF",
         type="pdf",
-        key=f"pdf_uploader_{st.session_state._pdf_uploader_key}"
+        accept_multiple_files=True,
     )
 
-    if uploaded_pdf and pdf_to_descargo and st.session_state.get("_pdf_last") != uploaded_pdf.name:
+    if uploaded_pdfs and pdf_to_descargo:
         parser = getattr(pdf_to_descargo, "parse_pdf", None)
         if parser is None:
             st.error("pdf_to_descargo no tiene función parse_pdf")
         else:
-            try:
-                data = parser(uploaded_pdf)
-                if "infrs" not in st.session_state:
-                    st.session_state.infrs = []
-                st.session_state.infrs.append(data.get("infracciones", [{}])[0])
+            for upl in uploaded_pdfs:
+                if upl.name in st.session_state.processed_pdfs:
+                    continue
+                try:
+                    data = parser(upl)
+                    if "infrs" not in st.session_state:
+                        st.session_state.infrs = []
+                    st.session_state.infrs.append(data.get("infracciones", [{}])[0])
 
-                cli = data.get("cliente", {})
-                cli_mapping = {
-                    "cli_nombre": "NOMBRE",
-                    "cli_dni": "DNI",
-                    "cli_nacionalidad": "NACIONALIDAD",
-                    "cli_dom_real": "DOMICILIO_REAL",
-                    "cli_dom_proc": "DOMICILIO_PROCESAL",
-                    "cli_dominio": "DOMINIO",
-                    "cli_veh_marca": "VEHICULO_MARCA",
-                    "cli_veh_modelo": "VEHICULO_MODELO",
-                }
-                for st_key, data_key in cli_mapping.items():
-                    if data_key in cli:
-                        st.session_state[st_key] = cli[data_key]
+                    cli = data.get("cliente", {})
+                    cli_mapping = {
+                        "cli_nombre": "NOMBRE",
+                        "cli_dni": "DNI",
+                        "cli_nacionalidad": "NACIONALIDAD",
+                        "cli_dom_real": "DOMICILIO_REAL",
+                        "cli_dom_proc": "DOMICILIO_PROCESAL",
+                        "cli_dominio": "DOMINIO",
+                        "cli_veh_marca": "VEHICULO_MARCA",
+                        "cli_veh_modelo": "VEHICULO_MODELO",
+                    }
+                    for st_key, data_key in cli_mapping.items():
+                        if data_key in cli:
+                            st.session_state[st_key] = cli[data_key]
 
-                st.session_state._pdf_last = uploaded_pdf.name
-                st.session_state._pdf_uploader_key += 1  # reinicia el file_uploader
-            except Exception as e:
-                st.error(f"Fallo procesando PDF: {e}")
-    elif uploaded_pdf and pdf_to_descargo is None:
+                    st.session_state.processed_pdfs.add(upl.name)
+                except Exception as e:
+                    st.error(f"Fallo procesando PDF {upl.name}: {e}")
+    elif uploaded_pdfs and pdf_to_descargo is None:
         msg = "No se pudo importar pdf_to_descargo"
         if _PDF_IMPORT_ERROR:
             msg += f": {_PDF_IMPORT_ERROR}"
@@ -324,8 +325,8 @@ if modo == "Crear descargos con nuevo cliente":
     if "infrs" not in st.session_state:
         st.session_state.infrs = []
 
-    col_btn = st.columns([1,1,8])
-    if col_btn[0].button("➕ Agregar infracción"):
+    col_btn = st.columns([2,2,6])
+    if col_btn[0].button("➕ Agregar infracción", use_container_width=True):
         st.session_state.infrs.append({
             "TIPO_INFRACCION": "velocidad",
             "NRO_ACTA": "",
@@ -341,9 +342,16 @@ if modo == "Crear descargos con nuevo cliente":
             "INTI_INSPECCION_VIGENTE": None,
             "AUTORIZACION_MUNICIPAL_VIGENTE": None,
             "SENALIZACION_28BIS_CUMPLIDA": None,
+            "NOTIFICACION_EN_60_DIAS": False,
+            "NOTIFICACION_FEHACIENTE": True,
+            "IMPUTACION_INDICA_NORMA": True,
+            "FIRMA_DIGITAL_VALIDA": True,
+            "METADATOS_COMPLETOS": False,
+            "CADENA_CUSTODIA_ACREDITADA": False,
+            "AGENTE_IDENTIFICADO": False,
         })
 
-    if col_btn[1].button("🗑️ Quitar última") and st.session_state.infrs:
+    if col_btn[1].button("🗑️ Quitar última", use_container_width=True) and st.session_state.infrs:
         st.session_state.infrs.pop()
 
     for idx, inf in enumerate(st.session_state.infrs):
@@ -391,26 +399,19 @@ if modo == "Crear descargos con nuevo cliente":
             inf["NOTIFICACION_EN_60_DIAS"] = c16.checkbox(
                 "Notificación < 60 días", value=inf.get("NOTIFICACION_EN_60_DIAS", False), key=f"not60_{idx}"
             )
-            inf["NOTIFICACION_FEHACIENTE"] = c17.checkbox(
-                "Notificación fehaciente", value=inf.get("NOTIFICACION_FEHACIENTE", False), key=f"notfeh_{idx}"
-            )
-            inf["IMPUTACION_INDICA_NORMA"] = c18.checkbox(
-                "Indica norma violada", value=inf.get("IMPUTACION_INDICA_NORMA", False), key=f"norma_{idx}"
-            )
-            inf["FIRMA_DIGITAL_VALIDA"] = c19.checkbox(
-                "Firma digital válida", value=inf.get("FIRMA_DIGITAL_VALIDA", False), key=f"firma_{idx}"
-            )
-
-            c20, c21, c22 = st.columns(3)
-            inf["METADATOS_COMPLETOS"] = c20.checkbox(
+            inf["METADATOS_COMPLETOS"] = c17.checkbox(
                 "Metadatos completos", value=inf.get("METADATOS_COMPLETOS", False), key=f"metadata_{idx}"
             )
-            inf["CADENA_CUSTODIA_ACREDITADA"] = c21.checkbox(
+            inf["CADENA_CUSTODIA_ACREDITADA"] = c18.checkbox(
                 "Cadena de custodia acreditada", value=inf.get("CADENA_CUSTODIA_ACREDITADA", False), key=f"cadena_{idx}"
             )
-            inf["AGENTE_IDENTIFICADO"] = c22.checkbox(
+            inf["AGENTE_IDENTIFICADO"] = c19.checkbox(
                 "Agente identificado", value=inf.get("AGENTE_IDENTIFICADO", False), key=f"agente_{idx}"
             )
+
+            inf["NOTIFICACION_FEHACIENTE"] = True
+            inf["IMPUTACION_INDICA_NORMA"] = True
+            inf["FIRMA_DIGITAL_VALIDA"] = True
 
     st.markdown("---")
     col_save1, col_save2 = st.columns(2)
