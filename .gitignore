@@ -4,3 +4,4 @@ salidas/
 adjuntos/
 *.tmp
 "app/assets/*.png" 
+app/assets/*.png 
