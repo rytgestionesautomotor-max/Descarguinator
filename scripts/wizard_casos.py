@@ -91,12 +91,12 @@ def main():
 
     # 4) Toggles probatorios (defaults según tu criterio)
     hay_equipo_auto = True  # “siempre” por política acordada
-    notif_60 = ask_bool("¿Hubo notificación dentro de 60 días hábiles? (art. 28 L 13.927)", False)
-    notif_fehac = ask_bool("¿Hubo notificación fehaciente (CD/cedula)?", False)
-    imputa_norma = ask_bool("¿La imputación indica norma exacta (art./inc.)?", False)
-    firma_ok = ask_bool("¿La imagen/archivo tiene firma digital + sello de tiempo válido?", False)
-    metadatos_ok = ask_bool("¿Metadatos completos (fecha/hora/coord/ID/param)?", False)
-    cadena_ok = ask_bool("¿Cadena de custodia acreditada (extracción/hash/registro)?", False)
+    notif_60 = True
+    notif_fehac = True
+    imputa_norma = True
+    firma_ok = True
+    metadatos_ok = True
+    cadena_ok = True
     patente_leg = ask_bool("¿Patente legible inequívocamente?", False)
     inti_vig = ask_bool("¿Inspección/verificación INTI vigente al hecho?", False)
     aut_mun_vig = ask_bool("¿Autorización ministerial previa/municipal vigente?", False)
@@ -107,7 +107,7 @@ def main():
         senal_28bis = ask_bool("¿Se cumplió señalización previa y límite (art. 28 Bis)?", False)
 
     incomp = ask_bool("¿Incompetencia territorial/materia/tiempo?", False)
-    agente_id = ask_bool("¿Agente/operadores plenamente identificados?", False)
+    agente_id = True
 
     # Prescripción 5 años (true por defecto, salvo que el acta supere 5 años)
     try:

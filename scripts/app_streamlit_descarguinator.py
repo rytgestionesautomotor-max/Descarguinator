@@ -5,6 +5,7 @@
 import os
 import sys
 import json
+import io
 import datetime as dt
 import subprocess
 from pathlib import Path
@@ -13,6 +14,7 @@ from typing import List, Literal, Optional
 import streamlit as st
 from pydantic import BaseModel, Field, validator
 from slugify import slugify
+import pdfplumber
 
 try:
     import pdf_to_descargo
@@ -63,13 +65,13 @@ class Infraccion(BaseModel):
     SENALIZACION_28BIS_CUMPLIDA: Optional[bool] = None
 
     # Notificación / validez probatoria
-    NOTIFICACION_EN_60_DIAS: bool = False
+    NOTIFICACION_EN_60_DIAS: bool = True
     NOTIFICACION_FEHACIENTE: bool = True
     IMPUTACION_INDICA_NORMA: bool = True
     FIRMA_DIGITAL_VALIDA: bool = True
-    METADATOS_COMPLETOS: bool = False
-    CADENA_CUSTODIA_ACREDITADA: bool = False
-    AGENTE_IDENTIFICADO: bool = False
+    METADATOS_COMPLETOS: bool = True
+    CADENA_CUSTODIA_ACREDITADA: bool = True
+    AGENTE_IDENTIFICADO: bool = True
 
     @validator("FECHA_HECHO")
     def validar_fecha(cls, v):
@@ -146,34 +148,38 @@ def guardar_json(caso: Caso, nombre_cliente: str) -> Path:
     return path
 
 
-def guardar_adjuntos(base_name: str, dni_files, cedula_files, firma_file) -> None:
+def guardar_adjuntos(base_names: List[str], dni_files, cedula_files, firma_file) -> None:
     """Guarda imágenes de adjuntos en la carpeta global de adjuntos.
 
-    Ahora acepta múltiples archivos para DNI y cédula.
+    `base_names` puede ser uno o varios NRO_ACTA para replicar los adjuntos
+    en cada descargo generado.
     """
-    if not base_name:
+    if not base_names:
         return
+    if isinstance(base_names, str):
+        base_names = [base_names]
+
     data = [
         (dni_files, "dni"),
         (cedula_files, "cedula"),
     ]
 
-    for files, suf in data:
-        if not files:
-            continue
-        # Normaliza a lista
-        if not isinstance(files, list):
-            files = [files]
-        for idx, upl in enumerate(files, 1):
-            ext = Path(upl.name).suffix or ".jpg"
-            name = f"{base_name}_{suf}{idx if len(files) > 1 else ''}{ext}"
-            dest = ADJUNTOS_DIR / name
-            dest.write_bytes(upl.getvalue())
+    for base in base_names:
+        for files, suf in data:
+            if not files:
+                continue
+            if not isinstance(files, list):
+                files = [files]
+            for idx, upl in enumerate(files, 1):
+                ext = Path(upl.name).suffix or ".jpg"
+                name = f"{base}_{suf}{idx if len(files) > 1 else ''}{ext}"
+                dest = ADJUNTOS_DIR / name
+                dest.write_bytes(upl.getvalue())
 
-    if firma_file is not None:
-        ext = Path(firma_file.name).suffix or ".jpg"
-        dest = ADJUNTOS_DIR / f"{base_name}_firma{ext}"
-        dest.write_bytes(firma_file.getvalue())
+        if firma_file is not None:
+            ext = Path(firma_file.name).suffix or ".jpg"
+            dest = ADJUNTOS_DIR / f"{base}_firma{ext}"
+            dest.write_bytes(firma_file.getvalue())
 
 def listar_jsons(nombre_cliente: str) -> List[Path]:
     d = cliente_dir(nombre_cliente) / JSON_DIRNAME
@@ -250,6 +256,7 @@ modo = st.sidebar.radio(
 if modo == "Crear descargos con nuevo cliente":
     if "processed_pdfs" not in st.session_state or not st.session_state.get("infrs"):
         st.session_state.processed_pdfs = set()
+        st.session_state.acta_imgs = {}
     uploaded_pdfs = st.file_uploader(
         "Actas en PDF",
         type="pdf",
@@ -265,7 +272,8 @@ if modo == "Crear descargos con nuevo cliente":
                 if upl.name in st.session_state.processed_pdfs:
                     continue
                 try:
-                    data = parser(upl)
+                    pdf_bytes = upl.getvalue()
+                    data = parser(pdf_bytes)
                     if "infrs" not in st.session_state:
                         st.session_state.infrs = []
                     st.session_state.infrs.append(data.get("infracciones", [{}])[0])
@@ -285,6 +293,15 @@ if modo == "Crear descargos con nuevo cliente":
                         if data_key in cli:
                             st.session_state[st_key] = cli[data_key]
 
+                    slug = slugify(st.session_state.infrs[-1].get("NRO_ACTA", upl.name))
+                    imgs = []
+                    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+                        for pg, page in enumerate(pdf.pages, 1):
+                            img = page.to_image(resolution=200).original
+                            out = ADJUNTOS_DIR / f"{slug}_acta{pg}.png"
+                            img.save(out)
+                            imgs.append(str(out))
+                    st.session_state.acta_imgs[slug] = imgs
                     st.session_state.processed_pdfs.add(upl.name)
                 except Exception as e:
                     st.error(f"Fallo procesando PDF {upl.name}: {e}")
@@ -342,13 +359,13 @@ if modo == "Crear descargos con nuevo cliente":
             "INTI_INSPECCION_VIGENTE": None,
             "AUTORIZACION_MUNICIPAL_VIGENTE": None,
             "SENALIZACION_28BIS_CUMPLIDA": None,
-            "NOTIFICACION_EN_60_DIAS": False,
+            "NOTIFICACION_EN_60_DIAS": True,
             "NOTIFICACION_FEHACIENTE": True,
             "IMPUTACION_INDICA_NORMA": True,
             "FIRMA_DIGITAL_VALIDA": True,
-            "METADATOS_COMPLETOS": False,
-            "CADENA_CUSTODIA_ACREDITADA": False,
-            "AGENTE_IDENTIFICADO": False,
+            "METADATOS_COMPLETOS": True,
+            "CADENA_CUSTODIA_ACREDITADA": True,
+            "AGENTE_IDENTIFICADO": True,
         })
 
     if col_btn[1].button("🗑️ Quitar última", use_container_width=True) and st.session_state.infrs:
@@ -394,20 +411,22 @@ if modo == "Crear descargos con nuevo cliente":
                     "Patente legible en foto", value=bool(inf.get("PATENTE_LEGIBLE")), key=f"patente_{idx}"
                 )
 
-            st.markdown("**Validez formal / notificaciones**")
-            c16, c17, c18, c19 = st.columns(4)
-            inf["NOTIFICACION_EN_60_DIAS"] = c16.checkbox(
-                "Notificación < 60 días", value=inf.get("NOTIFICACION_EN_60_DIAS", False), key=f"not60_{idx}"
-            )
-            inf["METADATOS_COMPLETOS"] = c17.checkbox(
-                "Metadatos completos", value=inf.get("METADATOS_COMPLETOS", False), key=f"metadata_{idx}"
-            )
-            inf["CADENA_CUSTODIA_ACREDITADA"] = c18.checkbox(
-                "Cadena de custodia acreditada", value=inf.get("CADENA_CUSTODIA_ACREDITADA", False), key=f"cadena_{idx}"
-            )
-            inf["AGENTE_IDENTIFICADO"] = c19.checkbox(
-                "Agente identificado", value=inf.get("AGENTE_IDENTIFICADO", False), key=f"agente_{idx}"
-            )
+            inf["NOTIFICACION_EN_60_DIAS"] = True
+            inf["METADATOS_COMPLETOS"] = True
+            inf["CADENA_CUSTODIA_ACREDITADA"] = True
+            inf["AGENTE_IDENTIFICADO"] = True
+            inf["NOTIFICACION_FEHACIENTE"] = True
+            inf["IMPUTACION_INDICA_NORMA"] = True
+            inf["FIRMA_DIGITAL_VALIDA"] = True
+
+            slug = slugify(inf.get("NRO_ACTA", ""))
+            imgs = st.session_state.get("acta_imgs", {}).get(slug)
+            if imgs:
+                if st.button("👁️ Ver acta", key=f"ver_acta_{idx}"):
+                    st.session_state[f"show_acta_{idx}"] = not st.session_state.get(f"show_acta_{idx}", False)
+                if st.session_state.get(f"show_acta_{idx}"):
+                    for img_path in imgs:
+                        st.image(img_path)
 
             inf["NOTIFICACION_FEHACIENTE"] = True
             inf["IMPUTACION_INDICA_NORMA"] = True
@@ -434,8 +453,8 @@ if modo == "Crear descargos con nuevo cliente":
                 infrs = [Infraccion(**i) for i in st.session_state.infrs]
                 caso = Caso(cliente=cliente, infracciones=infrs)
                 path = guardar_json(caso, nombre)
-                base_slug = slugify(st.session_state.infrs[0]["NRO_ACTA"]) if st.session_state.infrs else ""
-                guardar_adjuntos(base_slug, dni_files, ced_files, firma_file)
+                base_slugs = [slugify(i["NRO_ACTA"]) for i in st.session_state.infrs if i.get("NRO_ACTA")]
+                guardar_adjuntos(base_slugs, dni_files, ced_files, firma_file)
                 st.success(f"JSON guardado: {path}")
                 st.session_state["last_json_path"] = str(path)
             except Exception as e:
@@ -460,8 +479,8 @@ if modo == "Crear descargos con nuevo cliente":
                 infrs = [Infraccion(**i) for i in st.session_state.infrs]
                 caso = Caso(cliente=cliente, infracciones=infrs)
                 path = guardar_json(caso, nombre)
-                base_slug = slugify(st.session_state.infrs[0]["NRO_ACTA"]) if st.session_state.infrs else ""
-                guardar_adjuntos(base_slug, dni_files, ced_files, firma_file)
+                base_slugs = [slugify(i["NRO_ACTA"]) for i in st.session_state.infrs if i.get("NRO_ACTA")]
+                guardar_adjuntos(base_slugs, dni_files, ced_files, firma_file)
                 st.success(f"JSON guardado: {path}")
                 st.session_state["last_json_path"] = str(path)
                 ok, out_path = ejecutar_render(path)

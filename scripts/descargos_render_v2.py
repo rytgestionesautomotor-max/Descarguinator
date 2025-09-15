@@ -379,6 +379,8 @@ def render_docx(plantilla: Path, ctx: Dict[str, Any], out_path: Path, estricto: 
             attachments += sorted(DIR_ADJUNTOS.glob(f"{slug}_cedula*"))
         if ctx.get("ADJUNTA_FIRMA_IMG"):
             attachments += sorted(DIR_ADJUNTOS.glob(f"{slug}_firma*"))
+        if ctx.get("ADJUNTA_ACTA_IMG"):
+            attachments += sorted(DIR_ADJUNTOS.glob(f"{slug}_acta*"))
     text_to_doc(final_text, out_path, attachments=attachments)
 
 
