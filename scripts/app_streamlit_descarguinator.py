@@ -5,6 +5,7 @@
 import os
 import sys
 import json
+import io
 import datetime as dt
 import subprocess
 from pathlib import Path
@@ -13,6 +14,7 @@ from typing import List, Literal, Optional
 import streamlit as st
 from pydantic import BaseModel, Field, validator
 from slugify import slugify
+import pdfplumber
 
 try:
     import pdf_to_descargo
@@ -63,13 +65,13 @@ class Infraccion(BaseModel):
     SENALIZACION_28BIS_CUMPLIDA: Optional[bool] = None
 
     # Notificación / validez probatoria
-    NOTIFICACION_EN_60_DIAS: bool = False
-    NOTIFICACION_FEHACIENTE: bool = False
-    IMPUTACION_INDICA_NORMA: bool = False
-    FIRMA_DIGITAL_VALIDA: bool = False
-    METADATOS_COMPLETOS: bool = False
-    CADENA_CUSTODIA_ACREDITADA: bool = False
-    AGENTE_IDENTIFICADO: bool = False
+    NOTIFICACION_EN_60_DIAS: bool = True
+    NOTIFICACION_FEHACIENTE: bool = True
+    IMPUTACION_INDICA_NORMA: bool = True
+    FIRMA_DIGITAL_VALIDA: bool = True
+    METADATOS_COMPLETOS: bool = True
+    CADENA_CUSTODIA_ACREDITADA: bool = True
+    AGENTE_IDENTIFICADO: bool = True
 
     @validator("FECHA_HECHO")
     def validar_fecha(cls, v):
@@ -146,20 +148,38 @@ def guardar_json(caso: Caso, nombre_cliente: str) -> Path:
     return path
 
 
-def guardar_adjuntos(base_name: str, dni_file, cedula_file, firma_file) -> None:
-    """Guarda imágenes de adjuntos en la carpeta global de adjuntos."""
-    if not base_name:
+def guardar_adjuntos(base_names: List[str], dni_files, cedula_files, firma_file) -> None:
+    """Guarda imágenes de adjuntos en la carpeta global de adjuntos.
+
+    `base_names` puede ser uno o varios NRO_ACTA para replicar los adjuntos
+    en cada descargo generado.
+    """
+    if not base_names:
         return
-    for upl, suf in [
-        (dni_file, "dni"),
-        (cedula_file, "cedula"),
-        (firma_file, "firma"),
-    ]:
-        if upl is None:
-            continue
-        ext = Path(upl.name).suffix or ".jpg"
-        dest = ADJUNTOS_DIR / f"{base_name}_{suf}{ext}"
-        dest.write_bytes(upl.getvalue())
+    if isinstance(base_names, str):
+        base_names = [base_names]
+
+    data = [
+        (dni_files, "dni"),
+        (cedula_files, "cedula"),
+    ]
+
+    for base in base_names:
+        for files, suf in data:
+            if not files:
+                continue
+            if not isinstance(files, list):
+                files = [files]
+            for idx, upl in enumerate(files, 1):
+                ext = Path(upl.name).suffix or ".jpg"
+                name = f"{base}_{suf}{idx if len(files) > 1 else ''}{ext}"
+                dest = ADJUNTOS_DIR / name
+                dest.write_bytes(upl.getvalue())
+
+        if firma_file is not None:
+            ext = Path(firma_file.name).suffix or ".jpg"
+            dest = ADJUNTOS_DIR / f"{base}_firma{ext}"
+            dest.write_bytes(firma_file.getvalue())
 
 def listar_jsons(nombre_cliente: str) -> List[Path]:
     d = cliente_dir(nombre_cliente) / JSON_DIRNAME
@@ -234,46 +254,58 @@ modo = st.sidebar.radio(
     ["Crear descargos con nuevo cliente", "Crear descargos con cliente existente"],
 )
 if modo == "Crear descargos con nuevo cliente":
-    # Uploader con clave variable para permitir re-subir el mismo PDF
-    if "_pdf_uploader_key" not in st.session_state:
-        st.session_state._pdf_uploader_key = 0
-    uploaded_pdf = st.file_uploader(
-        "Acta en PDF",
+    if "processed_pdfs" not in st.session_state or not st.session_state.get("infrs"):
+        st.session_state.processed_pdfs = set()
+        st.session_state.acta_imgs = {}
+    uploaded_pdfs = st.file_uploader(
+        "Actas en PDF",
         type="pdf",
-        key=f"pdf_uploader_{st.session_state._pdf_uploader_key}"
+        accept_multiple_files=True,
     )
 
-    if uploaded_pdf and pdf_to_descargo and st.session_state.get("_pdf_last") != uploaded_pdf.name:
+    if uploaded_pdfs and pdf_to_descargo:
         parser = getattr(pdf_to_descargo, "parse_pdf", None)
         if parser is None:
             st.error("pdf_to_descargo no tiene función parse_pdf")
         else:
-            try:
-                data = parser(uploaded_pdf)
-                if "infrs" not in st.session_state:
-                    st.session_state.infrs = []
-                st.session_state.infrs.append(data.get("infracciones", [{}])[0])
+            for upl in uploaded_pdfs:
+                if upl.name in st.session_state.processed_pdfs:
+                    continue
+                try:
+                    pdf_bytes = upl.getvalue()
+                    data = parser(pdf_bytes)
+                    if "infrs" not in st.session_state:
+                        st.session_state.infrs = []
+                    st.session_state.infrs.append(data.get("infracciones", [{}])[0])
 
-                cli = data.get("cliente", {})
-                cli_mapping = {
-                    "cli_nombre": "NOMBRE",
-                    "cli_dni": "DNI",
-                    "cli_nacionalidad": "NACIONALIDAD",
-                    "cli_dom_real": "DOMICILIO_REAL",
-                    "cli_dom_proc": "DOMICILIO_PROCESAL",
-                    "cli_dominio": "DOMINIO",
-                    "cli_veh_marca": "VEHICULO_MARCA",
-                    "cli_veh_modelo": "VEHICULO_MODELO",
-                }
-                for st_key, data_key in cli_mapping.items():
-                    if data_key in cli:
-                        st.session_state[st_key] = cli[data_key]
+                    cli = data.get("cliente", {})
+                    cli_mapping = {
+                        "cli_nombre": "NOMBRE",
+                        "cli_dni": "DNI",
+                        "cli_nacionalidad": "NACIONALIDAD",
+                        "cli_dom_real": "DOMICILIO_REAL",
+                        "cli_dom_proc": "DOMICILIO_PROCESAL",
+                        "cli_dominio": "DOMINIO",
+                        "cli_veh_marca": "VEHICULO_MARCA",
+                        "cli_veh_modelo": "VEHICULO_MODELO",
+                    }
+                    for st_key, data_key in cli_mapping.items():
+                        if data_key in cli:
+                            st.session_state[st_key] = cli[data_key]
 
-                st.session_state._pdf_last = uploaded_pdf.name
-                st.session_state._pdf_uploader_key += 1  # reinicia el file_uploader
-            except Exception as e:
-                st.error(f"Fallo procesando PDF: {e}")
-    elif uploaded_pdf and pdf_to_descargo is None:
+                    slug = slugify(st.session_state.infrs[-1].get("NRO_ACTA", upl.name))
+                    imgs = []
+                    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+                        for pg, page in enumerate(pdf.pages, 1):
+                            img = page.to_image(resolution=200).original
+                            out = ADJUNTOS_DIR / f"{slug}_acta{pg}.png"
+                            img.save(out)
+                            imgs.append(str(out))
+                    st.session_state.acta_imgs[slug] = imgs
+                    st.session_state.processed_pdfs.add(upl.name)
+                except Exception as e:
+                    st.error(f"Fallo procesando PDF {upl.name}: {e}")
+    elif uploaded_pdfs and pdf_to_descargo is None:
         msg = "No se pudo importar pdf_to_descargo"
         if _PDF_IMPORT_ERROR:
             msg += f": {_PDF_IMPORT_ERROR}"
@@ -293,9 +325,13 @@ if modo == "Crear descargos con nuevo cliente":
     st.sidebar.divider()
     st.sidebar.markdown("**Adjuntos**")
     adj_dni = st.sidebar.checkbox("Adjunta DNI", value=True)
-    dni_file = st.sidebar.file_uploader("Archivo DNI", type=["jpg","jpeg","png"], key="dni_file")
+    dni_files = st.sidebar.file_uploader(
+        "Archivo DNI", type=["jpg", "jpeg", "png"], accept_multiple_files=True, key="dni_files"
+    )
     adj_cedula = st.sidebar.checkbox("Adjunta Cédula", value=True)
-    ced_file = st.sidebar.file_uploader("Archivo Cédula", type=["jpg","jpeg","png"], key="ced_file")
+    ced_files = st.sidebar.file_uploader(
+        "Archivo Cédula", type=["jpg", "jpeg", "png"], accept_multiple_files=True, key="ced_files"
+    )
     adj_firma = st.sidebar.checkbox("Adjunta Firma", value=True)
     firma_file = st.sidebar.file_uploader("Archivo Firma", type=["jpg","jpeg","png"], key="firma_file")
     adj_acta = st.sidebar.checkbox("Adjunta Acta", value=True)
@@ -306,8 +342,8 @@ if modo == "Crear descargos con nuevo cliente":
     if "infrs" not in st.session_state:
         st.session_state.infrs = []
 
-    col_btn = st.columns([1,1,8])
-    if col_btn[0].button("➕ Agregar infracción"):
+    col_btn = st.columns([2,2,6])
+    if col_btn[0].button("➕ Agregar infracción", use_container_width=True):
         st.session_state.infrs.append({
             "TIPO_INFRACCION": "velocidad",
             "NRO_ACTA": "",
@@ -323,9 +359,16 @@ if modo == "Crear descargos con nuevo cliente":
             "INTI_INSPECCION_VIGENTE": None,
             "AUTORIZACION_MUNICIPAL_VIGENTE": None,
             "SENALIZACION_28BIS_CUMPLIDA": None,
+            "NOTIFICACION_EN_60_DIAS": True,
+            "NOTIFICACION_FEHACIENTE": True,
+            "IMPUTACION_INDICA_NORMA": True,
+            "FIRMA_DIGITAL_VALIDA": True,
+            "METADATOS_COMPLETOS": True,
+            "CADENA_CUSTODIA_ACREDITADA": True,
+            "AGENTE_IDENTIFICADO": True,
         })
 
-    if col_btn[1].button("🗑️ Quitar última") and st.session_state.infrs:
+    if col_btn[1].button("🗑️ Quitar última", use_container_width=True) and st.session_state.infrs:
         st.session_state.infrs.pop()
 
     for idx, inf in enumerate(st.session_state.infrs):
@@ -368,31 +411,22 @@ if modo == "Crear descargos con nuevo cliente":
                     "Patente legible en foto", value=bool(inf.get("PATENTE_LEGIBLE")), key=f"patente_{idx}"
                 )
 
-            st.markdown("**Validez formal / notificaciones**")
-            c16, c17, c18, c19 = st.columns(4)
-            inf["NOTIFICACION_EN_60_DIAS"] = c16.checkbox(
-                "Notificación < 60 días", value=inf.get("NOTIFICACION_EN_60_DIAS", False), key=f"not60_{idx}"
-            )
-            inf["NOTIFICACION_FEHACIENTE"] = c17.checkbox(
-                "Notificación fehaciente", value=inf.get("NOTIFICACION_FEHACIENTE", False), key=f"notfeh_{idx}"
-            )
-            inf["IMPUTACION_INDICA_NORMA"] = c18.checkbox(
-                "Indica norma violada", value=inf.get("IMPUTACION_INDICA_NORMA", False), key=f"norma_{idx}"
-            )
-            inf["FIRMA_DIGITAL_VALIDA"] = c19.checkbox(
-                "Firma digital válida", value=inf.get("FIRMA_DIGITAL_VALIDA", False), key=f"firma_{idx}"
-            )
+            inf["NOTIFICACION_EN_60_DIAS"] = True
+            inf["METADATOS_COMPLETOS"] = True
+            inf["CADENA_CUSTODIA_ACREDITADA"] = True
+            inf["AGENTE_IDENTIFICADO"] = True
+            inf["NOTIFICACION_FEHACIENTE"] = True
+            inf["IMPUTACION_INDICA_NORMA"] = True
+            inf["FIRMA_DIGITAL_VALIDA"] = True
 
-            c20, c21, c22 = st.columns(3)
-            inf["METADATOS_COMPLETOS"] = c20.checkbox(
-                "Metadatos completos", value=inf.get("METADATOS_COMPLETOS", False), key=f"metadata_{idx}"
-            )
-            inf["CADENA_CUSTODIA_ACREDITADA"] = c21.checkbox(
-                "Cadena de custodia acreditada", value=inf.get("CADENA_CUSTODIA_ACREDITADA", False), key=f"cadena_{idx}"
-            )
-            inf["AGENTE_IDENTIFICADO"] = c22.checkbox(
-                "Agente identificado", value=inf.get("AGENTE_IDENTIFICADO", False), key=f"agente_{idx}"
-            )
+            slug = slugify(inf.get("NRO_ACTA", ""))
+            imgs = st.session_state.get("acta_imgs", {}).get(slug)
+            if imgs:
+                if st.button("👁️ Ver acta", key=f"ver_acta_{idx}"):
+                    st.session_state[f"show_acta_{idx}"] = not st.session_state.get(f"show_acta_{idx}", False)
+                if st.session_state.get(f"show_acta_{idx}"):
+                    for img_path in imgs:
+                        st.image(img_path)
 
     st.markdown("---")
     col_save1, col_save2 = st.columns(2)
@@ -415,8 +449,8 @@ if modo == "Crear descargos con nuevo cliente":
                 infrs = [Infraccion(**i) for i in st.session_state.infrs]
                 caso = Caso(cliente=cliente, infracciones=infrs)
                 path = guardar_json(caso, nombre)
-                base_slug = slugify(st.session_state.infrs[0]["NRO_ACTA"]) if st.session_state.infrs else ""
-                guardar_adjuntos(base_slug, dni_file, ced_file, firma_file)
+                base_slugs = [slugify(i["NRO_ACTA"]) for i in st.session_state.infrs if i.get("NRO_ACTA")]
+                guardar_adjuntos(base_slugs, dni_files, ced_files, firma_file)
                 st.success(f"JSON guardado: {path}")
                 st.session_state["last_json_path"] = str(path)
             except Exception as e:
@@ -441,8 +475,8 @@ if modo == "Crear descargos con nuevo cliente":
                 infrs = [Infraccion(**i) for i in st.session_state.infrs]
                 caso = Caso(cliente=cliente, infracciones=infrs)
                 path = guardar_json(caso, nombre)
-                base_slug = slugify(st.session_state.infrs[0]["NRO_ACTA"]) if st.session_state.infrs else ""
-                guardar_adjuntos(base_slug, dni_file, ced_file, firma_file)
+                base_slugs = [slugify(i["NRO_ACTA"]) for i in st.session_state.infrs if i.get("NRO_ACTA")]
+                guardar_adjuntos(base_slugs, dni_files, ced_files, firma_file)
                 st.success(f"JSON guardado: {path}")
                 st.session_state["last_json_path"] = str(path)
                 ok, out_path = ejecutar_render(path)

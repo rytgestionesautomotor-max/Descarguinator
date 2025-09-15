@@ -156,16 +156,17 @@ def extract_fields(text: str) -> dict:
             "No encender luces bajas" if tipo_infraccion == "luces" else ""
         ),
 
-        # Flags probatorios (por defecto falsos)
-        "NOTIFICACION_EN_60_DIAS": False,
-        "NOTIFICACION_FEHACIENTE": False,
-        "AUTORIZACION_MUNICIPAL_VIGENTE": False,
-        "INTI_INSPECCION_VIGENTE": False,
-        "FIRMA_DIGITAL_VALIDA": False,
-        "METADATOS_COMPLETOS": False,
-        "CADENA_CUSTODIA_ACREDITADA": False,
-        "PATENTE_LEGIBLE": False,
-        "SENALIZACION_28BIS_CUMPLIDA": False,
+        # Flags probatorios (por defecto verdaderos)
+        "NOTIFICACION_EN_60_DIAS": True,
+        "NOTIFICACION_FEHACIENTE": True,
+        "AUTORIZACION_MUNICIPAL_VIGENTE": True,
+        "INTI_INSPECCION_VIGENTE": True,
+        "FIRMA_DIGITAL_VALIDA": True,
+        "METADATOS_COMPLETOS": True,
+        "CADENA_CUSTODIA_ACREDITADA": True,
+        "PATENTE_LEGIBLE": True,
+        "SENALIZACION_28BIS_CUMPLIDA": True,
+        "AGENTE_IDENTIFICADO": True,
 
         "PLAZO_5_ANIOS_PRESCRIPCION": False,
     }
@@ -204,6 +205,13 @@ def parse_pdf(pdf_source) -> dict:
         "EQUIPO_MARCA": ctx.get("EQUIPO_MARCA") or None,
         "EQUIPO_MODELO": ctx.get("EQUIPO_MODELO") or None,
         "EQUIPO_SERIE": ctx.get("EQUIPO_SERIE") or None,
+        "NOTIFICACION_EN_60_DIAS": True,
+        "NOTIFICACION_FEHACIENTE": True,
+        "IMPUTACION_INDICA_NORMA": True,
+        "FIRMA_DIGITAL_VALIDA": True,
+        "METADATOS_COMPLETOS": True,
+        "CADENA_CUSTODIA_ACREDITADA": True,
+        "AGENTE_IDENTIFICADO": True,
     }
     cli = {
         "DOMINIO": ctx.get("DOMINIO", ""),
