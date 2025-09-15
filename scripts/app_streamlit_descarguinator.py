@@ -428,10 +428,6 @@ if modo == "Crear descargos con nuevo cliente":
                     for img_path in imgs:
                         st.image(img_path)
 
-            inf["NOTIFICACION_FEHACIENTE"] = True
-            inf["IMPUTACION_INDICA_NORMA"] = True
-            inf["FIRMA_DIGITAL_VALIDA"] = True
-
     st.markdown("---")
     col_save1, col_save2 = st.columns(2)
     if col_save1.button("💾 Guardar JSON del caso"):
