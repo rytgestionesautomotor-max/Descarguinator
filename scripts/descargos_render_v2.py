@@ -33,6 +33,8 @@ import argparse
 import sys
 
 from docx import Document
+from docx.shared import Inches
+from slugify import slugify
 
 
 # --------------------------------------------------------------------------------------
@@ -43,6 +45,7 @@ ROOT = BASE.parent                              # .../Descargos
 DIR_PLANTILLAS = ROOT / "plantillas"
 DIR_CASOS = ROOT / "casos"
 DIR_SALIDAS = ROOT / "salidas"
+DIR_ADJUNTOS = ROOT / "adjuntos"
 
 
 # --------------------------------------------------------------------------------------
@@ -81,11 +84,17 @@ def doc_to_text(path: Path) -> str:
     return "\n".join(parts)
 
 
-def text_to_doc(text: str, out_path: Path) -> None:
-    """Crea un .docx con párrafos a partir de texto plano."""
+def text_to_doc(text: str, out_path: Path, attachments: Optional[List[Path]] = None) -> None:
+    """Crea un .docx con párrafos a partir de texto plano.
+
+    Si se proveen `attachments`, se agregan como imágenes al final del documento.
+    """
     doc = Document()
     for line in text.split("\n"):
         doc.add_paragraph(line)
+    if attachments:
+        for img in attachments:
+            doc.add_picture(str(img), width=Inches(5))
     out_path.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(out_path))
 
@@ -361,7 +370,16 @@ def render_text(raw_template: str, ctx: Dict[str, Any], estricto: bool = False) 
 def render_docx(plantilla: Path, ctx: Dict[str, Any], out_path: Path, estricto: bool = False) -> None:
     raw = doc_to_text(plantilla)
     final_text = render_text(raw, ctx, estricto=estricto)
-    text_to_doc(final_text, out_path)
+    slug = slugify(str(ctx.get("NRO_ACTA", "")))
+    attachments: List[Path] = []
+    if slug:
+        if ctx.get("ADJUNTA_DNI_IMG"):
+            attachments += sorted(DIR_ADJUNTOS.glob(f"{slug}_dni*"))
+        if ctx.get("ADJUNTA_CEDULA_IMG"):
+            attachments += sorted(DIR_ADJUNTOS.glob(f"{slug}_cedula*"))
+        if ctx.get("ADJUNTA_FIRMA_IMG"):
+            attachments += sorted(DIR_ADJUNTOS.glob(f"{slug}_firma*"))
+    text_to_doc(final_text, out_path, attachments=attachments)
 
 
 # --------------------------------------------------------------------------------------
