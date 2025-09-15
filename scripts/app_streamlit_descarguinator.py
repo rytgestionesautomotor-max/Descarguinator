@@ -146,20 +146,34 @@ def guardar_json(caso: Caso, nombre_cliente: str) -> Path:
     return path
 
 
-def guardar_adjuntos(base_name: str, dni_file, cedula_file, firma_file) -> None:
-    """Guarda imágenes de adjuntos en la carpeta global de adjuntos."""
+def guardar_adjuntos(base_name: str, dni_files, cedula_files, firma_file) -> None:
+    """Guarda imágenes de adjuntos en la carpeta global de adjuntos.
+
+    Ahora acepta múltiples archivos para DNI y cédula.
+    """
     if not base_name:
         return
-    for upl, suf in [
-        (dni_file, "dni"),
-        (cedula_file, "cedula"),
-        (firma_file, "firma"),
-    ]:
-        if upl is None:
+    data = [
+        (dni_files, "dni"),
+        (cedula_files, "cedula"),
+    ]
+
+    for files, suf in data:
+        if not files:
             continue
-        ext = Path(upl.name).suffix or ".jpg"
-        dest = ADJUNTOS_DIR / f"{base_name}_{suf}{ext}"
-        dest.write_bytes(upl.getvalue())
+        # Normaliza a lista
+        if not isinstance(files, list):
+            files = [files]
+        for idx, upl in enumerate(files, 1):
+            ext = Path(upl.name).suffix or ".jpg"
+            name = f"{base_name}_{suf}{idx if len(files) > 1 else ''}{ext}"
+            dest = ADJUNTOS_DIR / name
+            dest.write_bytes(upl.getvalue())
+
+    if firma_file is not None:
+        ext = Path(firma_file.name).suffix or ".jpg"
+        dest = ADJUNTOS_DIR / f"{base_name}_firma{ext}"
+        dest.write_bytes(firma_file.getvalue())
 
 def listar_jsons(nombre_cliente: str) -> List[Path]:
     d = cliente_dir(nombre_cliente) / JSON_DIRNAME
@@ -293,9 +307,13 @@ if modo == "Crear descargos con nuevo cliente":
     st.sidebar.divider()
     st.sidebar.markdown("**Adjuntos**")
     adj_dni = st.sidebar.checkbox("Adjunta DNI", value=True)
-    dni_file = st.sidebar.file_uploader("Archivo DNI", type=["jpg","jpeg","png"], key="dni_file")
+    dni_files = st.sidebar.file_uploader(
+        "Archivo DNI", type=["jpg", "jpeg", "png"], accept_multiple_files=True, key="dni_files"
+    )
     adj_cedula = st.sidebar.checkbox("Adjunta Cédula", value=True)
-    ced_file = st.sidebar.file_uploader("Archivo Cédula", type=["jpg","jpeg","png"], key="ced_file")
+    ced_files = st.sidebar.file_uploader(
+        "Archivo Cédula", type=["jpg", "jpeg", "png"], accept_multiple_files=True, key="ced_files"
+    )
     adj_firma = st.sidebar.checkbox("Adjunta Firma", value=True)
     firma_file = st.sidebar.file_uploader("Archivo Firma", type=["jpg","jpeg","png"], key="firma_file")
     adj_acta = st.sidebar.checkbox("Adjunta Acta", value=True)
@@ -416,7 +434,7 @@ if modo == "Crear descargos con nuevo cliente":
                 caso = Caso(cliente=cliente, infracciones=infrs)
                 path = guardar_json(caso, nombre)
                 base_slug = slugify(st.session_state.infrs[0]["NRO_ACTA"]) if st.session_state.infrs else ""
-                guardar_adjuntos(base_slug, dni_file, ced_file, firma_file)
+                guardar_adjuntos(base_slug, dni_files, ced_files, firma_file)
                 st.success(f"JSON guardado: {path}")
                 st.session_state["last_json_path"] = str(path)
             except Exception as e:
@@ -442,7 +460,7 @@ if modo == "Crear descargos con nuevo cliente":
                 caso = Caso(cliente=cliente, infracciones=infrs)
                 path = guardar_json(caso, nombre)
                 base_slug = slugify(st.session_state.infrs[0]["NRO_ACTA"]) if st.session_state.infrs else ""
-                guardar_adjuntos(base_slug, dni_file, ced_file, firma_file)
+                guardar_adjuntos(base_slug, dni_files, ced_files, firma_file)
                 st.success(f"JSON guardado: {path}")
                 st.session_state["last_json_path"] = str(path)
                 ok, out_path = ejecutar_render(path)
