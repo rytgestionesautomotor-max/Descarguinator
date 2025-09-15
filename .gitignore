@@ -3,5 +3,6 @@ __pycache__/
 salidas/
 adjuntos/
 *.tmp
-"app/assets/*.png" 
-app/assets/*.png 
+app/assets/*.png
+app/assets/*.jpg
+app/assets/*.jpeg
