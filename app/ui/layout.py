@@ -1,10 +1,15 @@
 from pathlib import Path
 import streamlit as st
-from . import theme
+
+
+def _logo_path() -> Path:
+    """Return the path to the sidebar logo."""
+    return Path(__file__).resolve().parents[1] / "assets" / "logo_rt.png"
+
 
 def sidebar() -> None:
     """Render the fixed sidebar with navigation and actions."""
-    logo = Path("app/assets/logo_rt.png")
+    logo = _logo_path()
     if logo.exists():
         st.sidebar.image(str(logo), use_column_width=True)
     st.sidebar.title("Navegación")
